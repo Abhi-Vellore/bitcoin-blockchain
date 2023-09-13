@@ -4,21 +4,52 @@ use rand::Rng;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Transaction {
+    sender : Address,
+    receiever : Address,
+    value: i32
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SignedTransaction {
+    let transaction: Transaction = Transaction
+
+    let signature: Vec<u8> = Signature.as_ref().to_vec()
+    let public_key: Vec<u8> = public_key.as_ref().to_vec()
+
 }
 
 /// Create digital signature of a transaction
 pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
-    unimplemented!()
+    // Serialize the transaction
+    let transaction_bytes: Vec<u8> = bincode.serialize(&t).unwrap();
+
+    // Get the private key from the Ed25519KeyPair
+    let private_key = key_pair.private_key();
+
+    // Sign the serialized transaction with the private key
+    let signature = private_key.sign(&transaction_bytes);
+
+    signature
+    
 }
 
 /// Verify digital signature of a transaction, using public key instead of secret key
 pub fn verify(t: &Transaction, public_key: &[u8], signature: &[u8]) -> bool {
-    unimplemented!()
+    
+    // Deserialize the provided public key
+    let public_key = PublicKey::from_bytes(public_key);
+
+        // Serialize the transaction to bytes
+        let t_bytes = bincode::serialize(t).unwrap();
+
+        // Deserialize the provided signature
+        let signature = Signature::from_bytes(signature);
+
+        if public_key.verify(&t_bytes, &signature) {
+            return true;
+        }
 }
+
 
 #[cfg(any(test, test_utilities))]
 pub fn generate_random_transaction() -> Transaction {
