@@ -1,33 +1,38 @@
 use serde::{Serialize,Deserialize};
-use ring::signature::{Ed25519KeyPair, Signature};
+use ring::{
+    signature::{Ed25519KeyPair, Signature, KeyPair, UnparsedPublicKey},
+    agreement:: PublicKey
+};
 use rand::Rng;
+use super::address::Address;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Transaction {
     sender : Address,
-    receiever : Address,
+    receiver : Address,
     value: i32
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SignedTransaction {
-    let transaction: Transaction = Transaction
-
-    let signature: Vec<u8> = Signature.as_ref().to_vec()
-    let public_key: Vec<u8> = public_key.as_ref().to_vec()
-
+    transaction: Transaction,
+    signature: Vec<u8>, // = Signature.as_ref().to_vec(),
+    public_key: Vec<u8> // = public_key.as_ref().to_vec()
 }
 
 /// Create digital signature of a transaction
 pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
     // Serialize the transaction
-    let transaction_bytes: Vec<u8> = bincode.serialize(&t).unwrap();
+    let transaction_bytes: Vec<u8> = bincode::serialize(&t).unwrap();
+
+    //let key_pair: &Ed25519KeyPair = key;
+    //let private_key = (*key_pair).private_key();
 
     // Get the private key from the Ed25519KeyPair
-    let private_key = key_pair.private_key();
+    //let private_key = key.private_key();
 
     // Sign the serialized transaction with the private key
-    let signature = private_key.sign(&transaction_bytes);
+    let signature = key.sign(&transaction_bytes);
 
     signature
     
@@ -36,24 +41,46 @@ pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
 /// Verify digital signature of a transaction, using public key instead of secret key
 pub fn verify(t: &Transaction, public_key: &[u8], signature: &[u8]) -> bool {
     
-    // Deserialize the provided public key
-    let public_key = PublicKey::from_bytes(public_key);
+    // Convert the transaction to a byte representation
+    let transaction_bytes = bincode::serialize(&t).unwrap();
 
-        // Serialize the transaction to bytes
-        let t_bytes = bincode::serialize(t).unwrap();
+    // Create a PublicKey from the public key bytes
+    let public_key = UnparsedPublicKey::new(&ring::signature::ED25519, public_key);
 
-        // Deserialize the provided signature
-        let signature = Signature::from_bytes(signature);
-
-        if public_key.verify(&t_bytes, &signature) {
-            return true;
-        }
+    // Verify the signature using the public key
+    match public_key.verify(&transaction_bytes, &signature) {
+        Ok(_) => true,  // Signature is valid
+        Err(_) => false, // Signature is invalid
+    }    
+    
 }
+    
 
 
 #[cfg(any(test, test_utilities))]
 pub fn generate_random_transaction() -> Transaction {
-    unimplemented!()
+    // Create a random number generator
+    
+    fn generate_random_bytes() -> [u8; 20] {
+        let mut rng = rand::thread_rng();
+        let mut bytes = [0u8; 20];
+        rng.fill(&mut bytes);
+        bytes
+    }
+    let mut rng = rand::thread_rng();
+
+
+    // Generate random values for sender, receiver, and value
+    let sender = Address::from_public_key_bytes(&generate_random_bytes());       // Random sender address
+    let receiver = Address::from_public_key_bytes(&generate_random_bytes());     // Random receiver address
+    let value = rng.gen::<i32>();          // Random integer value
+
+    // Create a new Transaction with the generated values
+    Transaction {
+        sender,
+        receiver,
+        value,
+    }
 }
 
 // DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. BEFORE TEST
