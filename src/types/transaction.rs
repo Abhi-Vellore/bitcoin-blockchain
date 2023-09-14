@@ -1,9 +1,11 @@
 use serde::{Serialize,Deserialize};
 use ring::{
-    signature::{Ed25519KeyPair, Signature, KeyPair, UnparsedPublicKey},
+    signature::{Ed25519KeyPair, Signature, KeyPair, UnparsedPublicKey, ED25519},
     agreement:: PublicKey
 };
 use rand::Rng;
+use ring::signature;
+
 use super::address::Address;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
@@ -16,20 +18,14 @@ pub struct Transaction {
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SignedTransaction {
     transaction: Transaction,
-    signature: Vec<u8>, // = Signature.as_ref().to_vec(),
-    public_key: Vec<u8> // = public_key.as_ref().to_vec()
+    signature: Vec<u8>, 
+    public_key: Vec<u8> 
 }
 
 /// Create digital signature of a transaction
 pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
     // Serialize the transaction
     let transaction_bytes: Vec<u8> = bincode::serialize(&t).unwrap();
-
-    //let key_pair: &Ed25519KeyPair = key;
-    //let private_key = (*key_pair).private_key();
-
-    // Get the private key from the Ed25519KeyPair
-    //let private_key = key.private_key();
 
     // Sign the serialized transaction with the private key
     let signature = key.sign(&transaction_bytes);
@@ -45,7 +41,7 @@ pub fn verify(t: &Transaction, public_key: &[u8], signature: &[u8]) -> bool {
     let transaction_bytes = bincode::serialize(&t).unwrap();
 
     // Create a PublicKey from the public key bytes
-    let public_key = UnparsedPublicKey::new(&ring::signature::ED25519, public_key);
+    let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, public_key);
 
     // Verify the signature using the public key
     match public_key.verify(&transaction_bytes, &signature) {
@@ -71,9 +67,9 @@ pub fn generate_random_transaction() -> Transaction {
 
 
     // Generate random values for sender, receiver, and value
-    let sender = Address::from_public_key_bytes(&generate_random_bytes());       // Random sender address
-    let receiver = Address::from_public_key_bytes(&generate_random_bytes());     // Random receiver address
-    let value = rng.gen::<i32>();          // Random integer value
+    let sender = Address::from_public_key_bytes(&generate_random_bytes());       
+    let receiver = Address::from_public_key_bytes(&generate_random_bytes());     
+    let value = rng.gen::<i32>();   
 
     // Create a new Transaction with the generated values
     Transaction {
