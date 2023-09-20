@@ -3,27 +3,74 @@ use super::hash::{Hashable, H256};
 /// A Merkle tree.
 #[derive(Debug, Default)]
 pub struct MerkleTree {
+    root: Option<String>,
+    nodes: Vec<String>,
 }
 
 impl MerkleTree {
     pub fn new<T>(data: &[T]) -> Self where T: Hashable, {
-        unimplemented!()
+        let mut tree = MerkleTree::default();
+        tree.build(data);
+        tree
     }
 
     pub fn root(&self) -> H256 {
-        unimplemented!()
+        self.root.expect("Merkle tree is currently empty")
     }
 
     /// Returns the Merkle Proof of data at index i
     pub fn proof(&self, index: usize) -> Vec<H256> {
-        unimplemented!()
+        if index >= self.nodes.len() {
+            return Vec::new(); // Return an empty proof for out-of-bounds index
+        }
+
+        let mut proof = Vec::new();
+        let mut node_index = index;
+
+        for level in 0..self.height() {
+            let sibling_index = if node_index % 2 == 0 {
+                node_index + 1 } 
+            else { node_index - 1 };
+
+            if sibling_index < self.nodes.len() {
+                proof.push(self.nodes[sibling_index].clone());
+            }
+            node_index /= 2;
+        }
+        proof
     }
 }
 
 /// Verify that the datum hash with a vector of proofs will produce the Merkle root. Also need the
 /// index of datum and `leaf_size`, the total number of leaves.
 pub fn verify(root: &H256, datum: &H256, proof: &[H256], index: usize, leaf_size: usize) -> bool {
-    unimplemented!()
+    if index >= leaf_size {
+        return false; // Index out of bounds
+    }
+
+    let mut computed_hash = datum.clone();
+
+    for (i, proof_hash) in proof.iter().enumerate() {
+        let sibling_index = if index % 2 == 0 {
+            index + 1
+        } else {
+            index - 1
+        };
+
+        if sibling_index < leaf_size {
+            if i % 2 == 0 {
+                computed_hash = MerkleTree::combine_hashes(proof_hash, &computed_hash);
+            } else {
+                computed_hash = MerkleTree::combine_hashes(&computed_hash, proof_hash);
+            }
+
+            index /= 2;
+        } else {
+            // Invalid proof
+            return false;
+        }
+    }
+    &computed_hash == root
 }
 // DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. BEFORE TEST
 
