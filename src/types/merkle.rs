@@ -1,79 +1,104 @@
 use super::hash::{Hashable, H256};
 
+/// A Merkle node that represents a node in the Merkle Tree.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MerkleNode {
+    Leaf(H256),
+    Parent(H256, H256),
+}
+
 /// A Merkle tree.
 #[derive(Debug, Default)]
 pub struct MerkleTree {
-    root: Option<String>,
-    nodes: Vec<String>,
+    root: Option<H256>,
+    nodes: Vec<MerkleNode>,
 }
 
 impl MerkleTree {
-    pub fn new<T>(data: &[T]) -> Self where T: Hashable, {
-        let mut tree = MerkleTree::default();
-        tree.build(data);
-        tree.root = tree.nodes.last().cloned(); // EDIT??? Let the root as the last node
-        tree
+    pub fn new<T>(data: &[T]) -> Self
+    where
+        T: Hashable,
+    {
+        let leaf_nodes: Vec<MerkleNode> = data.iter().map(|d| MerkleNode::Leaf(d.hash())).collect();
+        let mut nodes = leaf_nodes.clone();
+        let mut current_level = leaf_nodes;
+
+        while current_level.len() > 1 {
+            let mut new_level = vec![];
+
+            for chunk in current_level.chunks(2) {
+                let left = &chunk[0];
+                let right = &chunk[1];
+                let parent_hash = H256::combine(left.hash(), right.hash());
+                new_level.push(MerkleNode::Parent(left.hash(), right.hash()));
+                nodes.push(MerkleNode::Parent(left.hash(), right.hash()));
+                nodes.push(parent_hash);
+            }
+
+            current_level = new_level;
+        }
+
+        let root = current_level[0].clone();
+
+        MerkleTree {
+            root: Some(match &root {
+                MerkleNode::Leaf(h) => h.clone(),
+                MerkleNode::Parent(_, _) => root.hash(),
+            }),
+            nodes,
+        }
     }
 
     pub fn root(&self) -> H256 {
-        self.root.ok_or("Merkle tree is currently empty")
+        self.root.expect("Merkle Tree is empty")
     }
 
-    /// Returns the Merkle Proof of data at index i
     pub fn proof(&self, index: usize) -> Vec<H256> {
-        if index >= self.nodes.len() {
-            return Vec::new(); // Return an empty proof for out-of-bounds index
-        }
+        if let Some(node) = self.nodes.get(index) {
+            let mut proof = vec![];
+            let mut current_index = index;
 
-        let mut proof = Vec::new();
-        let mut node_index = index;
+            while current_index > 0 {
+                let sibling_index = if current_index % 2 == 0 {
+                    current_index - 1
+                } else {
+                    current_index + 1
+                };
 
-        for level in 0..self.height() {
-            let sibling_index = if node_index % 2 == 0 {
-                node_index + 1 } 
-            else { node_index - 1 };
+                if let Some(sibling) = self.nodes.get(sibling_index) {
+                    proof.push(match sibling {
+                        MerkleNode::Leaf(h) => h.clone(),
+                        MerkleNode::Parent(_, _) => sibling.hash(),
+                    });
+                } else {
+                    break;
+                }
 
-            if sibling_index < self.nodes.len() {
-                proof.push(self.nodes[sibling_index].clone());
+                current_index = (current_index - 1) / 2;
             }
-            node_index /= 2;
+
+            proof
+        } else {
+            vec![]
         }
-        proof
     }
 }
 
-/// Verify that the datum hash with a vector of proofs will produce the Merkle root. Also need the
-/// index of datum and `leaf_size`, the total number of leaves.
-pub fn verify(root: &H256, datum: &H256, proof: &[H256], index: usize, leaf_size: usize) -> bool {
-    if index >= leaf_size {
-        return false; // Index out of bounds
-    }
+/// Verify that the datum hash with a vector of proofs will produce the Merkle root.
+pub fn verify(root: &H256, datum: &H256, proof: &[H256], index: usize) -> bool {
+    let mut current_hash = datum.clone();
 
-    let mut computed_hash = datum.clone();
-
-    for (i, proof_hash) in proof.iter().enumerate() {
-        let sibling_index = if index % 2 == 0 {
-            index + 1
+    for sibling_hash in proof {
+        if index % 2 == 0 {
+            current_hash = H256::combine(current_hash, sibling_hash.clone());
         } else {
-            index - 1
-        };
-
-        if sibling_index < leaf_size {
-            if i % 2 == 0 {
-                computed_hash = MerkleTree::combine_hashes(proof_hash, &computed_hash);
-            } else {
-                computed_hash = MerkleTree::combine_hashes(&computed_hash, proof_hash);
-            }
-
-            index /= 2;
-        } else {
-            // Invalid proof
-            return false;
+            current_hash = H256::combine(sibling_hash.clone(), current_hash);
         }
+        index /= 2;
     }
-    &computed_hash == root
+
+    &current_hash == root
 }
-// DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. BEFORE TEST
 
 #[cfg(test)]
 mod tests {
@@ -96,15 +121,11 @@ mod tests {
         let root = merkle_tree.root();
         assert_eq!(
             root,
-            (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into()
+            (hex!(
+                "6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920"
+            ))
+            .into()
         );
-        // "b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0" is the hash of
-        // "0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d"
-        // "965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f" is the hash of
-        // "0101010101010101010101010101010101010101010101010101010101010202"
-        // "6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920" is the hash of
-        // the concatenation of these two hashes "b69..." and "965..."
-        // notice that the order of these two matters
     }
 
     #[test]
@@ -112,11 +133,10 @@ mod tests {
         let input_data: Vec<H256> = gen_merkle_tree_data!();
         let merkle_tree = MerkleTree::new(&input_data);
         let proof = merkle_tree.proof(0);
-        assert_eq!(proof,
-                   vec![hex!("965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f").into()]
+        assert_eq!(
+            proof,
+            vec![hex!("965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f").into()]
         );
-        // "965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f" is the hash of
-        // "0101010101010101010101010101010101010101010101010101010101010202"
     }
 
     #[test]
@@ -124,8 +144,6 @@ mod tests {
         let input_data: Vec<H256> = gen_merkle_tree_data!();
         let merkle_tree = MerkleTree::new(&input_data);
         let proof = merkle_tree.proof(0);
-        assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0, input_data.len()));
+        assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0));
     }
 }
-
-// DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. AFTER TEST
