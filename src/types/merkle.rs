@@ -11,11 +11,12 @@ impl MerkleTree {
     pub fn new<T>(data: &[T]) -> Self where T: Hashable, {
         let mut tree = MerkleTree::default();
         tree.build(data);
+        tree.root = tree.nodes.last().cloned(); // EDIT??? Let the root as the last node
         tree
     }
 
     pub fn root(&self) -> H256 {
-        self.root.expect("Merkle tree is currently empty")
+        self.root.ok_or("Merkle tree is currently empty")
     }
 
     /// Returns the Merkle Proof of data at index i
