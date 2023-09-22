@@ -31,7 +31,7 @@ impl MerkleTree {
             nodes[base.pow(level as u32) as usize - 1 + i] = Some(item.hash());
         }
 
-        // Add duplicate node to leaf row
+        // Add duplicate node to leaf row if it has odd number of elements
         if leaf_count % 2 == 1 {
             nodes[base.pow(level as u32) as usize + leaf_count-1] = nodes[base.pow(level as u32) as usize + leaf_count-2];
             leaf_count = leaf_count + 1;
@@ -41,8 +41,8 @@ impl MerkleTree {
 
         for lvl in (0..level).rev() {
             for i in 0..level_count {
-                let left = nodes[2 * i + 1].clone().unwrap_or_default();
-                let right = nodes[2 * i + 2].clone().unwrap_or_default();
+                let left = nodes[2 * (base.pow(lvl as u32) as usize + i - 1) + 1].clone().unwrap_or_default();
+                let right = nodes[2 * (base.pow(lvl as u32) as usize + i - 1) + 2].clone().unwrap_or_default();
 
                 // create and update a context with both left and right hashes
                 let mut context = Context::new(&SHA256);
@@ -65,10 +65,11 @@ impl MerkleTree {
             // add duplicate to end of row if necessary
             if level_count % 2 == 1 {
                 nodes[base.pow(lvl as u32) as usize + level_count - 1] = nodes[base.pow(lvl as u32) as usize + level_count - 2];
+                level_count = 1 + level_count;
             }
 
             // update level count
-            level_count = leaf_count / 2;
+            level_count = level_count / 2;
         }
 
         MerkleTree {
@@ -219,6 +220,41 @@ mod tests {
         let proof = merkle_tree.proof(0);
         assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0, input_data.len()));
     }
+
+
+    macro_rules! gen_merkle_tree_data2 {
+        () => {{
+            vec![
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+            ]
+        }};
+    }
+
+    #[test]
+    fn merkle_root2() {
+        let input_data: Vec<H256> = gen_merkle_tree_data2!();
+        let merkle_tree = MerkleTree::new(&input_data);
+        let root = merkle_tree.root();
+        let nodes = merkle_tree.nodes;
+        assert_eq!(
+            nodes[0].unwrap(),
+            (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into()
+        );
+        // "b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0" is the hash of
+        // "0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d"
+        // "965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f" is the hash of
+        // "0101010101010101010101010101010101010101010101010101010101010202"
+        // "6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920" is the hash of
+        // the concatenation of these two hashes "b69..." and "965..."
+        // notice that the order of these two matters
+    }
+
+
 }
 
 // DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. AFTER TEST
