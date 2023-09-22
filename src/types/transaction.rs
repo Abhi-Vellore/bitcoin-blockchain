@@ -1,6 +1,6 @@
 use serde::{Serialize,Deserialize};
 use ring::{
-    signature::{Ed25519KeyPair, Signature, KeyPair, UnparsedPublicKey, ED25519},
+    signature::{Ed25519KeyPair, Signature},
     agreement:: PublicKey
 };
 use rand::Rng;

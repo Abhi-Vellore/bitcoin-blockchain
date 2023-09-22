@@ -1,5 +1,4 @@
 use ring::digest;
-use std::convert::TryInto;
 use serde::{Serialize, Deserialize};
 
 // 20-byte address
