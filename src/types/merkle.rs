@@ -36,7 +36,7 @@ impl MerkleTree {
         }
 
         // Add duplicate node to leaf row if it has odd number of elements
-        if leaf_count % 2 == 1 && max_level != 0 {
+        if leaf_count % 2 == 1 && max_level > 0 {
             nodes[first_leaf_index + leaf_count] = nodes[first_leaf_index + leaf_count - 1];
             leaf_count = leaf_count + 1;
         }
@@ -61,7 +61,7 @@ impl MerkleTree {
             }
             
             // add duplicate to end of row if necessary
-            if level_count % 2 == 1 && level != 0 {
+            if level_count % 2 == 1 && level > 0 {
                 nodes[level_first_index + level_count] = nodes[level_first_index + level_count - 1];
                 level_count += 1;
             }
@@ -225,13 +225,21 @@ mod tests {
     }
 
     #[test]
-    fn merkle_nodes() {
+    fn merkle_nodes_v1() {
         // generate a merkle tree starting with 6 leaf nodes
         let input_data: Vec<H256> = gen_merkle_tree_data2!();
         let merkle_tree = MerkleTree::new(&input_data);
         let root = merkle_tree.root();
         let nodes = merkle_tree.nodes;
         
+        assert_eq!(
+            nodes[7].unwrap(),
+            (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into()
+        );
+        assert_eq!(
+            nodes[8].unwrap(),
+            (hex!("965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f")).into()
+        );
         assert_eq!(
             nodes[3].unwrap(),
             (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into()
@@ -300,20 +308,6 @@ mod tests {
         assert_eq!(proof_4[2], nodes[2].unwrap());
     }
 
-    // define a slice of Hashable data of length 6
-    macro_rules! gen_merkle_tree_data3 {
-        () => {{
-            vec![
-                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
-                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
-                (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into(),
-                (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into(),
-                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
-                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
-            ]
-        }};
-    }
-
     #[test]
     fn merkle_verifying_v2() {
         let input_data: Vec<H256> = gen_merkle_tree_data2!();
@@ -327,17 +321,18 @@ mod tests {
         assert!(verify(&merkle_tree.root(), &input_data[5].hash(), &proof, 5, input_data.len()));
     }
 
-    #[test]
-    fn merkle_verifying_v3() {
-        let input_data: Vec<H256> = gen_merkle_tree_data3!();
-        let merkle_tree = MerkleTree::new(&input_data);
-        let mut proof;
-        
-        proof = merkle_tree.proof(0);
-        assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0, input_data.len()));
-
-        proof = merkle_tree.proof(5);
-        assert!(verify(&merkle_tree.root(), &input_data[5].hash(), &proof, 5, input_data.len()));
+    // define a slice of Hashable data of length 6
+    macro_rules! gen_merkle_tree_data3 {
+        () => {{
+            vec![
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+                (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into(),
+                (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+            ]
+        }};
     }
 
     #[test]
@@ -372,6 +367,154 @@ mod tests {
         assert_eq!(proof_4[0], nodes[9].unwrap());
         assert_eq!(proof_4[1], nodes[3].unwrap());
         assert_eq!(proof_4[2], nodes[2].unwrap());
+    }
+
+    #[test]
+    fn merkle_verifying_v3() {
+        let input_data: Vec<H256> = gen_merkle_tree_data3!();
+        let merkle_tree = MerkleTree::new(&input_data);
+        let mut proof;
+        
+        proof = merkle_tree.proof(0);
+        assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0, input_data.len()));
+
+        proof = merkle_tree.proof(5);
+        assert!(verify(&merkle_tree.root(), &input_data[5].hash(), &proof, 5, input_data.len()));
+    }
+
+    // define a slice of Hashable data of length 5
+     macro_rules! gen_merkle_tree_data4 {
+        () => {{
+            vec![
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+                (hex!("0101010101010101010101010101010101010101010101010101010101010202")).into(),
+                (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
+            ]
+        }};
+    }
+
+    #[test]
+    fn merkle_nodes_v2() {
+        // generate a merkle tree starting with 5 leaf nodes
+        let input_data: Vec<H256> = gen_merkle_tree_data4!();
+        let merkle_tree = MerkleTree::new(&input_data);
+        let root = merkle_tree.root();
+        let nodes = merkle_tree.nodes;
+        
+        assert_eq!(
+            nodes[7].unwrap(),
+            (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into()
+        );
+        assert_eq!(
+            nodes[8].unwrap(),
+            (hex!("965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f")).into()
+        );
+        assert_eq!(
+            nodes[11].unwrap(),
+            (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into()
+        );
+        assert_eq!(
+            nodes[11].unwrap(),
+            nodes[12].unwrap()
+        );
+        assert_eq!(
+            nodes[4].unwrap(),
+            (hex!("6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920")).into()
+        );
+        assert_eq!(
+            nodes[5].unwrap(),
+            nodes[6].unwrap()
+        );
+        assert_eq!(
+            nodes[13], None
+        );
+        assert_eq!(
+            root,
+            nodes[0].unwrap(),
+        );
+        
+        // "b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0" is the hash of
+        // "0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d"
+        // "965b093a75a75895a351786dd7a188515173f6928a8af8c9baa4dcff268a4f0f" is the hash of
+        // "0101010101010101010101010101010101010101010101010101010101010202"
+        // "6b787718210e0b3b608814e04e61fde06d0df794319a12162f287412df3ec920" is the hash of
+        // the concatenation of these two hashes "b69..." and "965..."
+        // notice that the order of these two matters
+    }
+
+    #[test]
+    fn merkle_proof_v4() {
+        let input_data: Vec<H256> = gen_merkle_tree_data4!();
+        let merkle_tree = MerkleTree::new(&input_data);
+        let nodes = merkle_tree.nodes.clone();
+        
+        let proof_1 = merkle_tree.proof(0);
+        // data point at index 0 refers to nodes[7]
+        // thus proof_1 should be hashes of nodes [8, 4, 2]
+        assert_eq!(proof_1.len(), 3);
+        assert_eq!(proof_1[0], nodes[8].unwrap());
+        assert_eq!(proof_1[1], nodes[4].unwrap());
+        assert_eq!(proof_1[2], nodes[2].unwrap());
+
+        let proof_2 = merkle_tree.proof(6);  // invalid index
+        assert_eq!(proof_2.len(), 0);
+        
+        let proof_3 = merkle_tree.proof(5);
+        // data point at index 5 refers to nodes[12]
+        // thus proof_3 should be hashes of nodes [11, 6, 1]
+        assert_eq!(proof_3.len(), 3);
+        assert_eq!(proof_3[0], nodes[11].unwrap());
+        assert_eq!(proof_3[1], nodes[6].unwrap());
+        assert_eq!(proof_3[2], nodes[1].unwrap());
+
+        let proof_4 = merkle_tree.proof(3);
+        // data point at index 3 refers to nodes[10]
+        // thus proof_4 should be hashes of nodes [9, 3, 2]
+        assert_eq!(proof_4.len(), 3);
+        assert_eq!(proof_4[0], nodes[9].unwrap());
+        assert_eq!(proof_4[1], nodes[3].unwrap());
+        assert_eq!(proof_4[2], nodes[2].unwrap());
+    }
+
+    #[test]
+    fn merkle_verifying_v4() {
+        let input_data: Vec<H256> = gen_merkle_tree_data4!();
+        let merkle_tree = MerkleTree::new(&input_data);
+        let mut proof;
+        
+        proof = merkle_tree.proof(0);
+        assert!(verify(&merkle_tree.root(), &input_data[0].hash(), &proof, 0, input_data.len()));
+
+        proof = merkle_tree.proof(4);
+        assert!(verify(&merkle_tree.root(), &input_data[4].hash(), &proof, 4, input_data.len()));
+    }
+
+    // define a slice of Hashable data of length 1
+    macro_rules! gen_merkle_tree_data5 {
+        () => {{
+            vec![(hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into()]
+        }};
+    }
+
+    #[test]
+    fn merkle_nodes_v3() {
+        // generate a merkle tree starting with 1 leaf node
+        let input_data: Vec<H256> = gen_merkle_tree_data5!();
+        let merkle_tree = MerkleTree::new(&input_data);
+        let root = merkle_tree.root();
+        let nodes = merkle_tree.nodes;
+        
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(
+            nodes[0].unwrap(),
+            (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into()
+        );
+        assert_eq!(
+            root,
+            (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into()
+        );
     }
 }
 
