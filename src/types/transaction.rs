@@ -1,8 +1,5 @@
 use serde::{Serialize,Deserialize};
-use ring::{
-    signature::{Ed25519KeyPair, Signature},
-    agreement:: PublicKey
-};
+use ring::signature::{Ed25519KeyPair, Signature};
 use rand::Rng;
 use ring::signature;
 
@@ -31,7 +28,6 @@ pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
     let signature = key.sign(&transaction_bytes);
 
     signature
-    
 }
 
 /// Verify digital signature of a transaction, using public key instead of secret key
@@ -48,23 +44,20 @@ pub fn verify(t: &Transaction, public_key: &[u8], signature: &[u8]) -> bool {
         Ok(_) => true,  // Signature is valid
         Err(_) => false, // Signature is invalid
     }    
-    
 }
-    
-
 
 #[cfg(any(test, test_utilities))]
 pub fn generate_random_transaction() -> Transaction {
-    // Create a random number generator
     
+    // Create a random number generator
     fn generate_random_bytes() -> [u8; 20] {
         let mut rng = rand::thread_rng();
         let mut bytes = [0u8; 20];
         rng.fill(&mut bytes);
         bytes
     }
-    let mut rng = rand::thread_rng();
 
+    let mut rng = rand::thread_rng();
 
     // Generate random values for sender, receiver, and value
     let sender = Address::from_public_key_bytes(&generate_random_bytes());       
