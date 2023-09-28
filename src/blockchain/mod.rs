@@ -1,13 +1,30 @@
 use crate::types::block::Block;
 use crate::types::hash::H256;
 
+use std::collections::HashMap;
+
+pub struct BlockNode {
+    block: Block, 
+    height: u64
+}
+
 pub struct Blockchain {
+    map: HashMap<H256, BlockNode>,
+    tip: H256
 }
 
 impl Blockchain {
     /// Create a new blockchain, only containing the genesis block
     pub fn new() -> Self {
-        Self {}
+        let mut map = HashMap::new();
+
+        let genesis_parent: H256 = (hex!("0000000000000000000000000000000000000000000000000000000000000000")).into();
+        let nonce: u32 = 0;
+        
+        let transactions: Vec<SignedTransaction> = Vec::new();
+        let content = Content{transactions};
+        let merkle_tree = MerkleTree::new(&transactions);
+        let merkle_root = merkle_tree.root();
     }
 
     /// Insert a block into blockchain

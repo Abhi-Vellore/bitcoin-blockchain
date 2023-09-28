@@ -1,8 +1,10 @@
 use crate::types::{
     hash::{H256, Hashable},
-    transaction::SignedTransaction
+    transaction::SignedTransaction,
+    merkle::MerkleTree,
 };
 
+use rand::Rng;
 use bincode;
 use serde::{Serialize, Deserialize};
 use serde::ser::{SerializeStruct, Serializer};
@@ -44,7 +46,7 @@ impl Hashable for SignedTransaction {
 // Define the structure for block content (transactions)
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Content {
-    transactions: Vec<SignedTransaction>,
+    transactions: Vec<SignedTransaction>
 }
 
 impl Content {
@@ -53,8 +55,6 @@ impl Content {
     }
 }
 
-
-
 impl Hashable for Block {
     fn hash(&self) -> H256 {
         self.header.hash()
@@ -62,25 +62,6 @@ impl Hashable for Block {
 }
 
 impl Block {
-    // Create a new Block, given a parent and content
-    pub fn new(parent: &H256, content: Content) -> Self {
-        let nonce = 0; // You should generate a random nonce
-        let difficulty = H256::default(); 
-        let timestamp = SystemTime::now();
-        let merkle_root = content.calculate_merkle_root();
-
-        Block {
-            header: Header {
-                parent: *parent,
-                nonce,
-                difficulty,
-                timestamp,
-                merkle_root,
-            },
-            content,
-        }
-    }
-
     pub fn get_parent(&self) -> H256 {
         self.header.parent
     }
@@ -92,9 +73,28 @@ impl Block {
 
 #[cfg(any(test, test_utilities))]
 pub fn generate_random_block(parent: &H256) -> Block {
-    let content = Content {
-        transactions: vec![],
+    // Make nonce a random integer
+    let mut rng = rand::thread_rng();  // create a random number generator
+    let nonce: u32 = rng.gen();
+
+    let difficulty = H256::default();
+    let timestamp = SystemTime::now();
+
+    let transactions: Vec<SignedTransaction> = Vec::new();  // empty transactions vector
+    let content = Content{transactions};
+    let merkle_tree = MerkleTree::new(&transactions);
+    let merkle_root = merkle_tree.root();
+
+    let header = Header {
+        parent: *parent,
+        nonce: nonce,
+        difficulty: difficulty,
+        timestamp: timestamp,
+        merkle_root: merkle_root
     };
 
-    Block::new(parent, content)
+    Block{
+        header: header, 
+        content: content
+    };
 }

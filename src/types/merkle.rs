@@ -15,9 +15,10 @@ impl MerkleTree {
     pub fn new<T>(data: &[T]) -> Self where T: Hashable, {
         if data.is_empty() {
             // handle empty input case
+            let item: H256 = (hex!("0000000000000000000000000000000000000000000000000000000000000000")).into();
             return MerkleTree {
-                root: None,
-                nodes: vec![],
+                root: Some(item),
+                nodes: Vec::new(),
                 leaf_count: 0,
             };
         }
@@ -383,7 +384,7 @@ mod tests {
     }
 
     // define a slice of Hashable data of length 5
-     macro_rules! gen_merkle_tree_data4 {
+    macro_rules! gen_merkle_tree_data4 {
         () => {{
             vec![
                 (hex!("0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d0a0b0c0d0e0f0e0d")).into(),
@@ -516,6 +517,36 @@ mod tests {
             (hex!("b69566be6e1720872f73651d1851a0eae0060a132cf0f64a0ffaea248de6cba0")).into()
         );
     }
+
+    #[test]
+    fn merkle_nodes_v4() {
+        // generate a merkle tree starting with 0 nodes
+        let input_data: Vec<H256> = vec![];
+        let merkle_tree = MerkleTree::new(&input_data);
+        let root = merkle_tree.root();
+        let nodes = merkle_tree.nodes;
+
+        assert_eq!(nodes.len(), 0);
+        assert_eq!(
+            root,
+            (hex!("0000000000000000000000000000000000000000000000000000000000000000")).into()
+        );
+    }
+
+    #[test]
+    fn merkle_verifying_v5() {
+        // generate a merkle tree starting with 0 nodes
+        let input_data: Vec<H256> = vec![];
+        let merkle_tree = MerkleTree::new(&input_data);
+
+        let mut proof;
+        proof = merkle_tree.proof(0);
+
+        let item: H256 = (hex!("0000000000000000000000000000000000000000000000000000000000000000")).into();
+
+        assert_eq!(proof.len(), 0);
+        assert_eq!(verify(&merkle_tree.root(), &item, &proof, 0, input_data.len()), false);
+    }   
 }
 
 // DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. AFTER TEST
