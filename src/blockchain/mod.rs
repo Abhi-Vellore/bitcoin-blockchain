@@ -83,21 +83,21 @@ impl Blockchain {
     /// Get all blocks' hashes of the longest chain, ordered from genesis to the tip
     pub fn all_blocks_in_longest_chain(&self) -> Vec<H256> {
         let mut longest_chain: Vec<H256> = Vec::new();
-        let mut cur_block_hash: H256 = self.tip;
+        
+        // start with the tip 
+        let mut cur_block_hash: H256 = self.tip; 
 
+        // move upwards through chain until genesis block is reached
         loop {
-            longest_chain.push(cur_block_hash);
-
-            let blocknode = self.map.get(&cur_block_hash).unwrap();
-
-            if blocknode.height == 0 {
-                break;
-            }
-
-            cur_block_hash = blocknode.block.get_parent();
+            longest_chain.push(cur_block_hash); 
+            let cur_blocknode = self.map.get(&cur_block_hash).unwrap();
+            if cur_blocknode.height == 0 { break; }   // end loop at genesis block
+            cur_block_hash = cur_blocknode.block.get_parent();   // move to parent
         }
 
-        return longest_chain.into_iter().rev().collect();
+        longest_chain.reverse();   // reverses longest_chain vector in-place
+        
+        longest_chain
     }
 }
 
