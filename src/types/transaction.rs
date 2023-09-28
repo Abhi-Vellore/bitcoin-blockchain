@@ -1,3 +1,4 @@
+use super::hash::{Hashable, H256};
 use serde::{Serialize,Deserialize};
 use ring::signature::{Ed25519KeyPair, Signature};
 use rand::Rng;
@@ -17,6 +18,15 @@ pub struct SignedTransaction {
     transaction: Transaction,
     signature: Vec<u8>, 
     public_key: Vec<u8> 
+}
+
+// Implement the hash function for SignedTransaction 
+impl Hashable for SignedTransaction {
+    fn hash(&self) -> H256 {
+        // Serialize the transaction into bytes
+        let serialized_transaction: Vec<u8> = bincode::serialize(&self).unwrap();
+        ring::digest::digest(&ring::digest::SHA256, &serialized_transaction).into()
+    }
 }
 
 /// Create digital signature of a transaction

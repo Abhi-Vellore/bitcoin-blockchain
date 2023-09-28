@@ -1,18 +1,27 @@
-use crate::types::block::Block;
-use crate::types::hash::H256;
+use crate::types::{
+    block::{Block, Content, Header},
+    hash::{H256, Hashable},
+    transaction::SignedTransaction,
+    merkle::MerkleTree,
+};
+use std::{
+    collections::HashMap,
+    time::SystemTime,
+};
 
-use std::collections::HashMap;
-
+// A BlockNode is a node in the Blockchain
 pub struct BlockNode {
     block: Block, 
     height: u64
 }
 
+// A Blockchain
 pub struct Blockchain {
     map: HashMap<H256, BlockNode>,
     tip: H256
 }
 
+// Implement functions for the Blockchain
 impl Blockchain {
     /// Create a new blockchain, only containing the genesis block
     pub fn new() -> Self {
@@ -22,25 +31,73 @@ impl Blockchain {
         let nonce: u32 = 0;
         
         let transactions: Vec<SignedTransaction> = Vec::new();
-        let content = Content{transactions};
         let merkle_tree = MerkleTree::new(&transactions);
         let merkle_root = merkle_tree.root();
+        
+        let difficulty: H256 = (hex!("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")).into();
+        let timestamp: SystemTime = SystemTime::now();
+
+        let content = Content{ transactions };
+
+        let header = Header {
+            parent: genesis_parent,
+            nonce: nonce,
+            difficulty: difficulty,
+            timestamp: timestamp,
+            merkle_root: merkle_root
+        };
+
+        let genesis_block = Block{ header, content };
+        let tip = genesis_block.hash();
+
+        map.insert(genesis_block.hash(), BlockNode{ block: genesis_block, height: 0 });
+
+        Blockchain{ map, tip }
     }
 
     /// Insert a block into blockchain
     pub fn insert(&mut self, block: &Block) {
-        unimplemented!()
+        let parent_node = self.map.get(&block.get_parent()).unwrap();
+        let height = parent_node.height + 1;
+
+        let blocknode = BlockNode { 
+            block: block.clone(), 
+            height: height 
+        }; 
+
+        // Insert blocknode into hashmap
+        self.map.insert(block.hash(), blocknode);
+
+        // Update tip
+        let tip_node = self.map.get(&self.tip).unwrap();        
+        if height > tip_node.height {
+            self.tip = block.hash();
+        }
     }
 
     /// Get the last block's hash of the longest chain
     pub fn tip(&self) -> H256 {
-        unimplemented!()
+        return self.tip;
     }
 
     /// Get all blocks' hashes of the longest chain, ordered from genesis to the tip
     pub fn all_blocks_in_longest_chain(&self) -> Vec<H256> {
-        // unimplemented!()
-        vec![]
+        let mut longest_chain: Vec<H256> = Vec::new();
+        let mut cur_block_hash: H256 = self.tip;
+
+        loop {
+            longest_chain.push(cur_block_hash);
+
+            let blocknode = self.map.get(&cur_block_hash).unwrap();
+
+            if blocknode.height == 0 {
+                break;
+            }
+
+            cur_block_hash = blocknode.block.get_parent();
+        }
+
+        return longest_chain.into_iter().rev().collect();
     }
 }
 

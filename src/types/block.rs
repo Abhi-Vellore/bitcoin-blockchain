@@ -3,30 +3,35 @@ use crate::types::{
     transaction::SignedTransaction,
     merkle::MerkleTree,
 };
-
 use rand::Rng;
 use bincode;
 use serde::{Serialize, Deserialize};
-use serde::ser::{SerializeStruct, Serializer};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
+// A Block, composed of a Header and Content
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
-    header: Header,
-    content: Content,
+    pub header: Header,
+    pub content: Content,
 }
 
-// A Header
+// A Header, composed of a block's attributes 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Header {
-    parent: H256,
-    nonce: u32,
-    difficulty: H256,
-    timestamp: SystemTime,
-    merkle_root: H256,
+    pub parent: H256,
+    pub nonce: u32,
+    pub difficulty: H256,
+    pub timestamp: SystemTime,
+    pub merkle_root: H256,
 }
 
-// Implement Hashable trait for Header
+// A Content, containing the transactions data of a block
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Content {
+    pub transactions: Vec<SignedTransaction>
+}
+
+// Implement the hash function for Header
 impl Hashable for Header {
     fn hash(&self) -> H256 {
         let serialized_header: Vec<u8> = bincode::serialize(&self).unwrap();
@@ -34,33 +39,14 @@ impl Hashable for Header {
     }
 }
 
-// Implement Hashable trait for SignedTransaction
-impl Hashable for SignedTransaction {
-    fn hash(&self) -> H256 {
-        // Serialize the transaction into bytes
-        let serialized_transaction: Vec<u8> = bincode::serialize(&self).unwrap();
-        ring::digest::digest(&ring::digest::SHA256, &serialized_transaction).into()
-    }
-}
-
-// Define the structure for block content (transactions)
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Content {
-    transactions: Vec<SignedTransaction>
-}
-
-impl Content {
-    pub fn calculate_merkle_root(&self) -> H256 {
-        unimplemented!()
-    }
-}
-
+// Implement the hash function for Block
 impl Hashable for Block {
     fn hash(&self) -> H256 {
-        self.header.hash()
+        self.header.hash()    // simply hash the Block's header
     }
 }
 
+// Implement getter functions for Block
 impl Block {
     pub fn get_parent(&self) -> H256 {
         self.header.parent
@@ -71,20 +57,23 @@ impl Block {
     }
 }
 
+//------------------------------------------------------------------------------------
+
+// Test the Block implementation by generating a random block
 #[cfg(any(test, test_utilities))]
 pub fn generate_random_block(parent: &H256) -> Block {
-    // Make nonce a random integer
     let mut rng = rand::thread_rng();  // create a random number generator
-    let nonce: u32 = rng.gen();
+    let nonce: u32 = rng.gen();        // make nonce a random integer
 
-    let difficulty = H256::default();
-    let timestamp = SystemTime::now();
+    let difficulty = H256::default();       // use default difficulty
+    let timestamp = SystemTime::now();      // use current time
 
     let transactions: Vec<SignedTransaction> = Vec::new();  // empty transactions vector
-    let content = Content{transactions};
-    let merkle_tree = MerkleTree::new(&transactions);
+    let merkle_tree = MerkleTree::new(&transactions);       // empty merkle tree
     let merkle_root = merkle_tree.root();
 
+    let content = Content{ transactions };      // content with empty transactions
+    
     let header = Header {
         parent: *parent,
         nonce: nonce,
@@ -93,8 +82,5 @@ pub fn generate_random_block(parent: &H256) -> Block {
         merkle_root: merkle_root
     };
 
-    Block{
-        header: header, 
-        content: content
-    };
+    Block{ header, content }
 }

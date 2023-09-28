@@ -538,9 +538,7 @@ mod tests {
         // generate a merkle tree starting with 0 nodes
         let input_data: Vec<H256> = vec![];
         let merkle_tree = MerkleTree::new(&input_data);
-
-        let mut proof;
-        proof = merkle_tree.proof(0);
+        let proof = merkle_tree.proof(0);
 
         let item: H256 = (hex!("0000000000000000000000000000000000000000000000000000000000000000")).into();
 
