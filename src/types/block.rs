@@ -59,7 +59,7 @@ impl Block {
 
 //------------------------------------------------------------------------------------
 
-// Test the Block implementation by generating a random block
+// Generate a random Block to help test the Blockchain implementation
 #[cfg(any(test, test_utilities))]
 pub fn generate_random_block(parent: &H256) -> Block {
     let mut rng = rand::thread_rng();  // create a random number generator

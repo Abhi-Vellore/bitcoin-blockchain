@@ -116,7 +116,58 @@ mod tests {
         let block = generate_random_block(&genesis_hash);
         blockchain.insert(&block);
         assert_eq!(blockchain.tip(), block.hash());
+    }
 
+    #[test]
+    fn insert_three() {
+        let mut blockchain = Blockchain::new();
+        let genesis_hash = blockchain.tip();
+        let block1 = generate_random_block(&genesis_hash);
+        let block2 = generate_random_block(&block1.hash());
+        let block3 = generate_random_block(&block2.hash());
+
+        blockchain.insert(&block1);
+        blockchain.insert(&block2);
+        blockchain.insert(&block3);
+        
+        let chain = blockchain.all_blocks_in_longest_chain();
+
+        // longest chain: gen -> b1 -> b2 -> b3
+        // tip: b3
+        
+        assert_eq!(blockchain.tip(), block3.hash());
+        assert_eq!(chain.len(), 4);
+        assert_eq!(chain[0], genesis_hash);
+        assert_eq!(chain[1], block1.hash());
+        assert_eq!(chain[2], block2.hash());
+        assert_eq!(chain[3], block3.hash());
+    }
+
+    #[test]
+    fn insert_four_with_fork() {
+        let mut blockchain = Blockchain::new();
+        let genesis_hash = blockchain.tip();
+        let block1 = generate_random_block(&genesis_hash);
+        let block2 = generate_random_block(&block1.hash());
+        let block3 = generate_random_block(&block1.hash());
+        let block4 = generate_random_block(&block3.hash());
+        
+        blockchain.insert(&block1);
+        blockchain.insert(&block2);
+        blockchain.insert(&block3);
+        blockchain.insert(&block4);
+        
+        let chain = blockchain.all_blocks_in_longest_chain();
+
+        // longest chain: gen -> b1 -> b3 -> b4
+        // tip: b4
+        
+        assert_eq!(blockchain.tip(), block4.hash());
+        assert_eq!(chain.len(), 4);
+        assert_eq!(chain[0], genesis_hash);
+        assert_eq!(chain[1], block1.hash());
+        assert_eq!(chain[2], block3.hash());
+        assert_eq!(chain[3], block4.hash());
     }
 }
 
