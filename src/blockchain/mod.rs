@@ -56,8 +56,20 @@ impl Blockchain {
     }
 
     /// Insert a block into blockchain
-    pub fn insert(&mut self, block: &Block) {
-        let parent_node = self.map.get(&block.get_parent()).unwrap();
+    pub fn insert(&mut self, block: &Block) -> Result<(), &'static str> {
+        let parent_node = match self.map.get(&block.get_parent()){
+            Some(node) => node,    // parent exists in hashmap
+            None => {
+                // parent is missing in hashmap, so return an error
+                return Err("Parent node not found");
+            }
+        };
+
+        // check if block is a duplicate
+        if self.map.contains_key(&block.hash()) {
+            return Err("Block already exists");
+        }
+
         let height = parent_node.height + 1;
 
         let blocknode = BlockNode { 
@@ -73,6 +85,8 @@ impl Blockchain {
         if height > tip_node.height {
             self.tip = block.hash();
         }
+
+        Ok(())
     }
 
     /// Get the last block's hash of the longest chain
@@ -141,6 +155,12 @@ mod tests {
         assert_eq!(chain[1], block1.hash());
         assert_eq!(chain[2], block2.hash());
         assert_eq!(chain[3], block3.hash());
+
+        // Check if height values are correct
+        assert_eq!(blockchain.map.get(&genesis_hash).unwrap().height, 0);
+        assert_eq!(blockchain.map.get(&block1.hash()).unwrap().height, 1);
+        assert_eq!(blockchain.map.get(&block2.hash()).unwrap().height, 2);
+        assert_eq!(blockchain.map.get(&block3.hash()).unwrap().height, 3);
     }
 
     #[test]
@@ -168,6 +188,75 @@ mod tests {
         assert_eq!(chain[1], block1.hash());
         assert_eq!(chain[2], block3.hash());
         assert_eq!(chain[3], block4.hash());
+
+        // Check if height values are correct
+        assert_eq!(blockchain.map.get(&genesis_hash).unwrap().height, 0);
+        assert_eq!(blockchain.map.get(&block1.hash()).unwrap().height, 1);
+        assert_eq!(blockchain.map.get(&block2.hash()).unwrap().height, 2);
+        assert_eq!(blockchain.map.get(&block3.hash()).unwrap().height, 2);
+        assert_eq!(blockchain.map.get(&block4.hash()).unwrap().height, 3);
+    }
+
+    #[test]
+    fn insert_six_with_err() {
+        // This test was adapted from an Ed post by another student.
+        let mut blockchain = Blockchain::new();
+        let genesis_hash = blockchain.tip();
+        let block1 = generate_random_block(&genesis_hash);
+        let block2 = generate_random_block(&genesis_hash);
+        let block3 = generate_random_block(&genesis_hash.hash().hash());
+        let block4 = generate_random_block(&block1.hash());
+        let block5 = generate_random_block(&block2.hash());
+        let block6 = generate_random_block(&block5.hash());
+
+        //      genesis
+        //        / \
+        //       1   2   (3)
+        //       |   | 
+        //       4   5
+        //           |
+        //           6    
+        
+        let a = blockchain.insert(&block1); 
+        assert_eq!(blockchain.tip(), block1.hash());
+
+        let b = blockchain.insert(&block2); 
+        assert_eq!(blockchain.tip(), block1.hash());
+
+        let c = blockchain.insert(&block3);
+        let d = blockchain.insert(&block2);
+        let e = blockchain.insert(&block4);
+        assert_eq!(blockchain.tip(), block4.hash());
+
+        let f = blockchain.insert(&block5); 
+        assert_eq!(blockchain.tip(), block4.hash());
+        
+        let g = blockchain.insert(&block6);
+        assert_eq!(blockchain.tip(), block6.hash());
+        
+        assert!(!a.is_err());   // Ok
+        assert!(!b.is_err());   // Ok (forked chain)
+        assert!(c.is_err());    // Err (parent does not exist)
+        assert!(d.is_err());    // Err (duplicate block)
+        assert!(!e.is_err());   // Ok (new tip)
+        assert!(!f.is_err());   // Ok
+        assert!(!g.is_err());   // Ok (new tip)
+
+        // Check longest chain
+        let mut hash_vec = Vec::new();
+        hash_vec.push(genesis_hash);
+        hash_vec.push(block2.hash());
+        hash_vec.push(block5.hash());
+        hash_vec.push(block6.hash());
+        assert_eq!(blockchain.all_blocks_in_longest_chain(), hash_vec);
+
+        // Check if height values are correct
+        assert_eq!(blockchain.map.get(&genesis_hash).unwrap().height, 0);
+        assert_eq!(blockchain.map.get(&block1.hash()).unwrap().height, 1);
+        assert_eq!(blockchain.map.get(&block2.hash()).unwrap().height, 1);
+        assert_eq!(blockchain.map.get(&block4.hash()).unwrap().height, 2);
+        assert_eq!(blockchain.map.get(&block5.hash()).unwrap().height, 2);
+        assert_eq!(blockchain.map.get(&block6.hash()).unwrap().height, 3);
     }
 }
 
