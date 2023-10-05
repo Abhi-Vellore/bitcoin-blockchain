@@ -3,11 +3,21 @@ pub mod worker;
 use log::info;
 
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
+use rand::Rng;
 use std::time;
+use std::{
+    sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
+    thread,
+};
 
-use std::thread;
-
-use crate::types::block::Block;
+use crate::blockchain::Blockchain;
+use crate::types::{
+    block::{Block, Content, Header},
+    hash::{H256, Hashable},
+    transaction::SignedTransaction,
+    merkle::MerkleTree,
+};
 
 enum ControlSignal {
     Start(u64), // the number controls the lambda of interval between block generation
@@ -26,6 +36,7 @@ pub struct Context {
     control_chan: Receiver<ControlSignal>,
     operating_state: OperatingState,
     finished_block_chan: Sender<Block>,
+    blockchain: Arc<Mutex<Blockchain>>,
 }
 
 #[derive(Clone)]
@@ -34,7 +45,7 @@ pub struct Handle {
     control_chan: Sender<ControlSignal>,
 }
 
-pub fn new() -> (Context, Handle, Receiver<Block>) {
+pub fn new(blockchain: &Arc<Mutex<Blockchain>>) -> (Context, Handle, Receiver<Block>) {
     let (signal_chan_sender, signal_chan_receiver) = unbounded();
     let (finished_block_sender, finished_block_receiver) = unbounded();
 
@@ -42,6 +53,7 @@ pub fn new() -> (Context, Handle, Receiver<Block>) {
         control_chan: signal_chan_receiver,
         operating_state: OperatingState::Paused,
         finished_block_chan: finished_block_sender,
+        blockchain: Arc::clone(blockchain),
     };
 
     let handle = Handle {
@@ -53,7 +65,8 @@ pub fn new() -> (Context, Handle, Receiver<Block>) {
 
 #[cfg(any(test,test_utilities))]
 fn test_new() -> (Context, Handle, Receiver<Block>) {
-    new()
+    let blockchain = Arc::new(Mutex::new(Blockchain::new()));
+    new(&blockchain)
 }
 
 impl Handle {
@@ -133,8 +146,76 @@ impl Context {
             }
 
             // TODO for student: actual mining, create a block
-            // TODO for student: if block mining finished, you can have something like: self.finished_block_chan.send(block.clone()).expect("Send finished block error");
+            // TODO for student: if block mining finished, you can have something like: 
+            // self.finished_block_chan.send(block.clone()).expect("Send finished block error");
 
+            println!("Starting the Mining Process...");
+
+            let blockchain = self.blockchain.lock().unwrap();
+
+            let parent_hash = blockchain.tip();
+
+            // let result = blockchain.get_block(&parent_hash);
+            // let parent_block: &Block;
+            // match result {
+            //     Ok(block) => parent_block = block,
+            //     Err(e) => panic!("Parent node does not exist in blockchain."),
+            // }
+
+            let parent_block = match blockchain.get_block(&parent_hash) {
+                Ok(block) => block,    // parent exists in blockchain
+                Err(e) => panic!("Parent node does not exist in blockchain."),   // parent not found
+            };
+
+            let difficulty = parent_block.get_difficulty();
+
+            let mut rng = rand::thread_rng();
+
+            drop(blockchain);
+
+            // empty transactions vector (for now)
+            let transactions: Vec<SignedTransaction> = Vec::<SignedTransaction>::new();
+            let merkle_tree = MerkleTree::new(&transactions.clone());
+            let merkle_root = merkle_tree.root();
+            
+
+            while self.blockchain.lock().unwrap().tip() == parent_hash  {
+                let timestamp: u128;
+                match SystemTime::now().duration_since(UNIX_EPOCH) {
+                    Ok(time) => timestamp = time.as_millis(),
+                    Err(_) => panic!("SystemTime before UNIX EPOCH!"), 
+                }
+                
+                let content = Content{ transactions: transactions.clone() };
+                let nonce: u32 = rng.gen::<u32>();
+                
+                let header = Header {
+                    parent: parent_hash,
+                    nonce: nonce,
+                    difficulty: difficulty,
+                    timestamp: timestamp,
+                    merkle_root: merkle_root
+                };
+
+                let block = Block{ header, content };
+                
+                if block.hash() <= difficulty {
+                    // desired nonce found!
+                    println!("Desired nonce found!");
+                    println!("Parent Hash: {}", parent_hash);
+                    println!("Block Hash : {}", block.hash());
+
+                    // Insert block into blockchain (temporary)
+                    match {self.blockchain.lock().unwrap().insert(&block)} {
+                        Ok(_) => println!("SUCCESS - inserted block into blockchain"),
+                        Err(e) => panic!("{}", e)
+                    };
+
+                    self.finished_block_chan.send(block.clone()).expect("Sending to channel resulted in error.");
+                    break;
+                }
+            }
+            
             if let OperatingState::Run(i) = self.operating_state {
                 if i != 0 {
                     let interval = time::Duration::from_micros(i as u64);
@@ -161,6 +242,28 @@ mod test {
         let mut block_prev = finished_block_chan.recv().unwrap();
         for _ in 0..2 {
             let block_next = finished_block_chan.recv().unwrap();
+            
+            println!("PREV HASH: \t {}", block_prev.hash());
+            println!("PRNT HASH: \t {}", block_next.get_parent());
+
+            assert_eq!(block_prev.hash(), block_next.get_parent());
+            block_prev = block_next;
+        }
+    }
+
+    #[test]
+    #[timeout(60000)]
+    fn miner_ten_block() {
+        let (miner_ctx, miner_handle, finished_block_chan) = super::test_new();
+        miner_ctx.start();
+        miner_handle.start(0);
+        let mut block_prev = finished_block_chan.recv().unwrap();
+        for _ in 0..9 {
+            let block_next = finished_block_chan.recv().unwrap();
+            
+            println!("PREV HASH: \t {}", block_prev.hash());
+            println!("PRNT HASH: \t {}", block_next.get_parent());
+
             assert_eq!(block_prev.hash(), block_next.get_parent());
             block_prev = block_next;
         }

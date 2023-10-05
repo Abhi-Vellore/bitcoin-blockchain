@@ -4,10 +4,8 @@ use crate::types::{
     transaction::SignedTransaction,
     merkle::MerkleTree,
 };
-use std::{
-    collections::HashMap,
-    time::SystemTime,
-};
+use std::collections::HashMap;
+use hex_literal::hex;
 
 // A BlockNode is a node in the Blockchain
 pub struct BlockNode {
@@ -34,8 +32,8 @@ impl Blockchain {
         let merkle_tree = MerkleTree::new(&transactions);
         let merkle_root = merkle_tree.root();
         
-        let difficulty: H256 = (hex!("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")).into();
-        let timestamp: SystemTime = SystemTime::now();
+        let difficulty: H256 = [255u8; 32].into();
+        let timestamp: u128 = 0;
 
         let content = Content{ transactions };
 
@@ -49,6 +47,7 @@ impl Blockchain {
 
         let genesis_block = Block{ header, content };
         let tip = genesis_block.hash();
+        println!("GENISIS HASH: {}", tip);
 
         map.insert(genesis_block.hash(), BlockNode{ block: genesis_block, height: 0 });
 
@@ -57,7 +56,7 @@ impl Blockchain {
 
     /// Insert a block into blockchain
     pub fn insert(&mut self, block: &Block) -> Result<(), &'static str> {
-        let parent_node = match self.map.get(&block.get_parent()){
+        let parent_node = match self.map.get(&block.get_parent()) {
             Some(node) => node,    // parent exists in hashmap
             None => {
                 // parent is missing in hashmap, so return an error
@@ -92,6 +91,18 @@ impl Blockchain {
     /// Get the last block's hash of the longest chain
     pub fn tip(&self) -> H256 {
         return self.tip;
+    }
+
+    /// Get a desired block from the blockchain
+    pub fn get_block(&self, blockhash: &H256) -> Result<&Block, &'static str> {
+        match self.map.get(blockhash){
+            Some(node) => {
+                return Ok(&node.block);     // block exists in hashmap
+            }
+            None => {
+                return Err("Block does not exist in blockchain.");   // block not found
+            }
+        }
     }
 
     /// Get all blocks' hashes of the longest chain, ordered from genesis to the tip

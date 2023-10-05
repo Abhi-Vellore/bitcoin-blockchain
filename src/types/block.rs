@@ -21,7 +21,7 @@ pub struct Header {
     pub parent: H256,
     pub nonce: u32,
     pub difficulty: H256,
-    pub timestamp: SystemTime,
+    pub timestamp: u128,
     pub merkle_root: H256,
 }
 
@@ -66,7 +66,7 @@ pub fn generate_random_block(parent: &H256) -> Block {
     let nonce: u32 = rng.gen();        // make nonce a random integer
 
     let difficulty = H256::default();       // use default difficulty
-    let timestamp = SystemTime::now();      // use current time
+    let timestamp = rng.gen::<u128>();      // use current time
 
     let transactions: Vec<SignedTransaction> = Vec::new();  // empty transactions vector
     let merkle_tree = MerkleTree::new(&transactions);       // empty merkle tree

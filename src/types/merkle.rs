@@ -1,6 +1,6 @@
 use super::hash::{Hashable, H256};
 use ring::digest::{Context, SHA256};
-
+use hex_literal::hex;
 
 /// A Merkle tree.
 #[derive(Debug, Default)]
