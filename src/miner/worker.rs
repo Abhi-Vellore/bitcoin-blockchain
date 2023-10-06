@@ -1,12 +1,10 @@
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use log::{debug, info};
-
 use crate::{
     types::block::Block,
     blockchain::Blockchain,
     network::server::Handle as ServerHandle
 };
-
 use std::{
     sync::{Arc, Mutex},
     thread,
@@ -44,6 +42,7 @@ impl Worker {
 
     fn worker_loop(&self) {
         loop {
+            // Receive from channel
             let block = self.finished_block_chan.recv().expect("Receive finished block error");
             
             // TODO for student: insert this finished block to blockchain, and broadcast this block hash
@@ -52,7 +51,6 @@ impl Worker {
             drop(blockchain);
             
             match result {
-                // Ok(_) => {()},
                 Ok(_) => println!("SUCCESS - inserted block into blockchain"),
                 Err(e) => panic!("{}", e)
             }

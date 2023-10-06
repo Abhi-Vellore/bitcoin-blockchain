@@ -1,20 +1,18 @@
 pub mod worker;
 
 use log::info;
-
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use rand::Rng;
-use std::time;
 use std::{
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
+    time,
     thread,
 };
-
 use crate::blockchain::Blockchain;
 use crate::types::{
     block::{Block, Content, Header},
-    hash::{H256, Hashable},
+    hash::Hashable,
     transaction::SignedTransaction,
     merkle::MerkleTree,
 };
@@ -154,40 +152,32 @@ impl Context {
             let blockchain = self.blockchain.lock().unwrap();
 
             let parent_hash = blockchain.tip();
-
-            // let result = blockchain.get_block(&parent_hash);
-            // let parent_block: &Block;
-            // match result {
-            //     Ok(block) => parent_block = block,
-            //     Err(e) => panic!("Parent node does not exist in blockchain."),
-            // }
-
             let parent_block = match blockchain.get_block(&parent_hash) {
                 Ok(block) => block,    // parent exists in blockchain
-                Err(e) => panic!("Parent node does not exist in blockchain."),   // parent not found
+                Err(_) => panic!("Parent node does not exist in blockchain."),   // parent not found
             };
 
             let difficulty = parent_block.get_difficulty();
-
             let mut rng = rand::thread_rng();
 
             drop(blockchain);
 
-            // empty transactions vector (for now)
-            let transactions: Vec<SignedTransaction> = Vec::<SignedTransaction>::new();
+            let transactions: Vec<SignedTransaction> = Vec::new();  // empty transactions vector (for now)
             let merkle_tree = MerkleTree::new(&transactions.clone());
             let merkle_root = merkle_tree.root();
             
-
+            // Loop to generate random nonces until desired hash is achieved
             while self.blockchain.lock().unwrap().tip() == parent_hash  {
-                let timestamp: u128;
-                match SystemTime::now().duration_since(UNIX_EPOCH) {
-                    Ok(time) => timestamp = time.as_millis(),
-                    Err(_) => panic!("SystemTime before UNIX EPOCH!"), 
-                }
+                let content = Content{ 
+                    transactions: transactions.clone() 
+                };
+
+                let nonce: u32 = rng.gen::<u32>();      // generate a random nonce
                 
-                let content = Content{ transactions: transactions.clone() };
-                let nonce: u32 = rng.gen::<u32>();
+                let timestamp: u128 = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                    Ok(time) => time.as_millis(),
+                    Err(_) => panic!("SystemTime before UNIX EPOCH!"), 
+                };
                 
                 let header = Header {
                     parent: parent_hash,
@@ -200,7 +190,7 @@ impl Context {
                 let block = Block{ header, content };
                 
                 if block.hash() <= difficulty {
-                    // desired nonce found!
+                    // Desired nonce found!
                     println!("Desired nonce found!");
                     println!("Parent Hash: {}", parent_hash);
                     println!("Block Hash : {}", block.hash());
@@ -211,6 +201,7 @@ impl Context {
                         Err(e) => panic!("{}", e)
                     };
 
+                    // Send to channel
                     self.finished_block_chan.send(block.clone()).expect("Sending to channel resulted in error.");
                     break;
                 }
@@ -243,8 +234,8 @@ mod test {
         for _ in 0..2 {
             let block_next = finished_block_chan.recv().unwrap();
             
-            println!("PREV HASH: \t {}", block_prev.hash());
-            println!("PRNT HASH: \t {}", block_next.get_parent());
+            // println!("PREV HASH: \t {}", block_prev.hash());
+            // println!("PRNT HASH: \t {}", block_next.get_parent());
 
             assert_eq!(block_prev.hash(), block_next.get_parent());
             block_prev = block_next;
@@ -261,8 +252,8 @@ mod test {
         for _ in 0..9 {
             let block_next = finished_block_chan.recv().unwrap();
             
-            println!("PREV HASH: \t {}", block_prev.hash());
-            println!("PRNT HASH: \t {}", block_next.get_parent());
+            // println!("PREV HASH: \t {}", block_prev.hash());
+            // println!("PRNT HASH: \t {}", block_next.get_parent());
 
             assert_eq!(block_prev.hash(), block_next.get_parent());
             block_prev = block_next;

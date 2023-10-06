@@ -6,7 +6,6 @@ use crate::types::{
 use rand::Rng;
 use bincode;
 use serde::{Serialize, Deserialize};
-use std::time::SystemTime;
 
 // A Block, composed of a Header and Content
 #[derive(Serialize, Deserialize, Debug, Clone)]

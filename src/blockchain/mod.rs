@@ -139,7 +139,7 @@ mod tests {
         let mut blockchain = Blockchain::new();
         let genesis_hash = blockchain.tip();
         let block = generate_random_block(&genesis_hash);
-        blockchain.insert(&block);
+        let _ = blockchain.insert(&block);
         assert_eq!(blockchain.tip(), block.hash());
     }
 
@@ -151,9 +151,9 @@ mod tests {
         let block2 = generate_random_block(&block1.hash());
         let block3 = generate_random_block(&block2.hash());
 
-        blockchain.insert(&block1);
-        blockchain.insert(&block2);
-        blockchain.insert(&block3);
+        let _ = blockchain.insert(&block1);
+        let _ = blockchain.insert(&block2);
+        let _ = blockchain.insert(&block3);
         
         let chain = blockchain.all_blocks_in_longest_chain();
 
@@ -183,10 +183,10 @@ mod tests {
         let block3 = generate_random_block(&block1.hash());
         let block4 = generate_random_block(&block3.hash());
         
-        blockchain.insert(&block1);
-        blockchain.insert(&block2);
-        blockchain.insert(&block3);
-        blockchain.insert(&block4);
+        let _ = blockchain.insert(&block1);
+        let _ = blockchain.insert(&block2);
+        let _ = blockchain.insert(&block3);
+        let _ = blockchain.insert(&block4);
         
         let chain = blockchain.all_blocks_in_longest_chain();
 
