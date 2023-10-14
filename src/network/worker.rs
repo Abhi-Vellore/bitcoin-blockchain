@@ -1,11 +1,16 @@
 use super::message::Message;
 use super::peer;
 use super::server::Handle as ServerHandle;
-use crate::types::hash::H256;
-
+use crate::types::hash::{H256, Hashable};
+use crate::blockchain::Blockchain;
+use std::{
+    sync::{Arc, Mutex},
+    thread,
+};
+use crate::types::block::{Block};
+use std::collections::HashMap;
 use log::{debug, warn, error};
 
-use std::thread;
 
 #[cfg(any(test,test_utilities))]
 use super::peer::TestReceiver as PeerTestReceiver;
@@ -16,7 +21,9 @@ pub struct Worker {
     msg_chan: smol::channel::Receiver<(Vec<u8>, peer::Handle)>,
     num_worker: usize,
     server: ServerHandle,
+    blockchain: Arc<Mutex<Blockchain>>,
 }
+
 
 
 impl Worker {
@@ -24,11 +31,13 @@ impl Worker {
         num_worker: usize,
         msg_src: smol::channel::Receiver<(Vec<u8>, peer::Handle)>,
         server: &ServerHandle,
+        blockchain: &Arc<Mutex<Blockchain>>
     ) -> Self {
         Self {
             msg_chan: msg_src,
             num_worker,
             server: server.clone(),
+            blockchain: Arc::clone(blockchain),
         }
     }
 
@@ -44,6 +53,7 @@ impl Worker {
     }
 
     fn worker_loop(&self) {
+        let mut orphan_buffer: HashMap<H256, Vec<Block>> = HashMap::new();
         loop {
             let result = smol::block_on(self.msg_chan.recv());
             if let Err(e) = result {
@@ -61,7 +71,115 @@ impl Worker {
                 Message::Pong(nonce) => {
                     debug!("Pong: {}", nonce);
                 }
-                _ => unimplemented!(),
+
+                // NEW BLOCK HASHES
+                Message::NewBlockHashes(hashes) => {
+                    //If not already hashed, then new block hashes
+                    let blockchain = self.blockchain.lock().unwrap();
+                    let mut unknown = Vec::new();
+                    for hash in hashes.iter() {
+                        // Get the hash and check
+                        let block_hash = blockchain.get_block(hash);
+                        match block_hash {
+                            Ok(_) => {()}
+                            Err(_) => {
+                                // Add the hash to the unknown vector
+                                unknown.push(hash.clone());
+                            }
+                        }
+                    }
+
+                    drop(blockchain);
+                    // Asking for hashes for the unknown
+                    if !unknown.is_empty() {
+                        peer.write(Message::GetBlocks(unknown));
+                    }
+                }
+
+                // GET BLOCKS
+                Message::GetBlocks(hashes) => {
+                    let blockchain = self.blockchain.lock().unwrap();
+                    let mut known = Vec::new();
+                    
+                    for hash in hashes.iter() {
+                        let result = blockchain.get_block(hash);
+                        match result {
+                            Ok(block) => {
+                                known.push(block.clone());
+                            }
+                            Err(_) => {()}
+                        }
+                    }
+
+                    drop(blockchain);
+
+                    if !known.is_empty() {
+                        peer.write(Message::Blocks(known));
+                    }
+                }
+
+                Message::Blocks(blocks) => {
+                    let mut blockchain = self.blockchain.lock().unwrap();
+                    
+                    let mut new_block_hashes = Vec::new();
+                    let mut blocks = blocks.clone();
+
+                    let mut i = 0;
+                    while i < blocks.len() {
+                        let block = &blocks[i].clone();
+
+                        if !(block.hash() <= block.get_difficulty()) {
+                            continue;
+                        }
+
+                        let result = blockchain.get_block(&block.hash());
+                        match result {
+                            Ok(_) => {()}
+                            Err(_) => {
+                                // Add the new block
+                                let result2 = blockchain.insert(block);
+                                match result2 {
+                                    Ok(_) => {
+                                        if result2 == true {
+                                            // successfully inserted into blockchain
+                                            // Need to add block hash
+                                            new_block_hashes.push(block.hash());
+                                            
+                                            // claim orphans if possible
+                                            if let Some(orphans) = orphan_buffer.get(&block.hash()) {
+                                                blocks.extend_from_slice(&orphans);
+                                                orphan_buffer.remove(&block.hash());
+                                            }
+                                        }
+                                        // not a valid block, no need to do anything
+                                        else {()}
+                                    }
+                                    // parent not in blockchain
+                                    Err(_) => {
+                                        // Add into a waiting queue
+                                        if let Some(orphans) = orphan_buffer.get_mut(&block.get_parent()) {
+                                            orphans.push(block.clone());
+                                        } else {
+                                            // Get the orphan and add it to the buffer
+                                            let orphans = vec![block.clone()];
+                                            orphan_buffer.insert(block.get_parent(), orphans);
+                                        }
+                                        // Use the getblocks to get the necessary blocks
+                                        peer.write(Message::GetBlocks(vec![block.hash()]));
+                                    }      
+                                }
+                            }
+                        }
+                        // Next block
+                        i += 1;
+                    }
+
+                    if new_block_hashes.len() != 0 {
+                        self.server.broadcast(Message::NewBlockHashes(new_block_hashes));
+                    }
+
+                }   
+
             }
         }
     }
@@ -85,14 +203,24 @@ impl TestMsgSender {
         r
     }
 }
+// THEY COMMENTED ALL OF THIS OUT
+//
+//
+//
+
 #[cfg(any(test,test_utilities))]
 /// returns two structs used by tests, and an ordered vector of hashes of all blocks in the blockchain
 fn generate_test_worker_and_start() -> (TestMsgSender, ServerTestReceiver, Vec<H256>) {
     let (server, server_receiver) = ServerHandle::new_for_test();
     let (test_msg_sender, msg_chan) = TestMsgSender::new();
-    let worker = Worker::new(1, msg_chan, &server);
+    let blockchain = Blockchain::new();
+    let blockchain = Arc::new(Mutex::new(blockchain));
+    let worker = Worker::new(1, msg_chan, &server, &blockchain);
     worker.start(); 
-    (test_msg_sender, server_receiver, vec![])
+    worker.start(); 
+    let current_chain = blockchain.lock().unwrap();
+    let longest = current_chain.all_blocks_in_longest_chain();
+    (test_msg_sender, server_receiver, longest)
 }
 
 // DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. BEFORE TEST

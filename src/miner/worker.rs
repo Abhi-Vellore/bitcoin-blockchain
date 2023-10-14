@@ -9,6 +9,9 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
+use crate::network::message::Message;
+use crate::types::hash::Hashable;
+
 
 #[derive(Clone)]
 pub struct Worker {
@@ -54,6 +57,13 @@ impl Worker {
                 Ok(_) => println!("SUCCESS - inserted block into blockchain"),
                 Err(e) => panic!("{}", e)
             }
+
+            // Broadcast message to NewBlockHashes
+            let hash = vec![block.hash()];
+            self.server.broadcast(Message::NewBlockHashes(hash));
+            println!("Broadcast the new block everywhere");
+
+
         }
     }
 }
