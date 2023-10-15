@@ -140,19 +140,16 @@ impl Worker {
                                 let result2 = blockchain.insert(block);
                                 match result2 {
                                     Ok(_) => {
-                                        if result2 == true {
-                                            // successfully inserted into blockchain
-                                            // Need to add block hash
-                                            new_block_hashes.push(block.hash());
-                                            
-                                            // claim orphans if possible
-                                            if let Some(orphans) = orphan_buffer.get(&block.hash()) {
-                                                blocks.extend_from_slice(&orphans);
-                                                orphan_buffer.remove(&block.hash());
-                                            }
+                                        // successfully inserted into blockchain
+                                        // Need to add block hash
+                                        new_block_hashes.push(block.hash());
+                                        
+                                        // claim orphans if possible
+                                        if let Some(orphans) = orphan_buffer.get(&block.hash()) {
+                                            blocks.extend_from_slice(&orphans);
+                                            orphan_buffer.remove(&block.hash());
                                         }
-                                        // not a valid block, no need to do anything
-                                        else {()}
+                                        
                                     }
                                     // parent not in blockchain
                                     Err(_) => {
@@ -178,7 +175,11 @@ impl Worker {
                         self.server.broadcast(Message::NewBlockHashes(new_block_hashes));
                     }
 
-                }   
+                }  
+                _ => {
+                    // Logic for all other unhandled variants or...
+                    unimplemented!() // Or `todo!()` if you want to add logic later.
+                }
 
             }
         }
@@ -217,7 +218,7 @@ fn generate_test_worker_and_start() -> (TestMsgSender, ServerTestReceiver, Vec<H
     let blockchain = Arc::new(Mutex::new(blockchain));
     let worker = Worker::new(1, msg_chan, &server, &blockchain);
     worker.start(); 
-    worker.start(); 
+
     let current_chain = blockchain.lock().unwrap();
     let longest = current_chain.all_blocks_in_longest_chain();
     (test_msg_sender, server_receiver, longest)
