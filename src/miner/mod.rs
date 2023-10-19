@@ -196,10 +196,10 @@ impl Context {
                     println!("Block Hash : {}", block.hash());
 
                     // Insert block into blockchain (temporary)
-                    match {self.blockchain.lock().unwrap().insert(&block)} {
-                        Ok(_) => println!("SUCCESS - inserted block into blockchain"),
-                        Err(e) => panic!("{}", e)
-                    };
+                    // match {self.blockchain.lock().unwrap().insert(&block)} {
+                    //     Ok(_) => println!("SUCCESS - inserted block into blockchain"),
+                    //     Err(e) => panic!("{}", e)
+                    // };
 
                     // Send to channel
                     self.finished_block_chan.send(block.clone()).expect("Sending to channel resulted in error.");
