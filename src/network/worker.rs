@@ -53,7 +53,7 @@ impl Worker {
     }
 
     fn worker_loop(&self) {
-        // let mut orphan_buffer: HashMap<H256, Vec<Block>> = HashMap::new();
+        let mut orphan_buffer: HashMap<H256, Vec<Block>> = HashMap::new();
         loop {
             let result = smol::block_on(self.msg_chan.recv());
             if let Err(e) = result {
@@ -128,9 +128,9 @@ impl Worker {
                     while i < blocks.len() {
                         let block = &blocks[i].clone();
 
-                        // if !(block.hash() <= block.get_difficulty()) {
-                        //     continue;
-                        // }
+                        if !(block.hash() <= block.get_difficulty()) {
+                            continue;
+                        }
 
                         let result = blockchain.get_block(&block.hash());
                         match result {
@@ -145,24 +145,24 @@ impl Worker {
                                         new_block_hashes.push(block.hash());
                                         
                                         // claim orphans if possible
-                                        // if let Some(orphans) = orphan_buffer.get(&block.hash()) {
-                                        //     blocks.extend_from_slice(&orphans);
-                                        //     orphan_buffer.remove(&block.hash());
-                                        // }
+                                        if let Some(orphans) = orphan_buffer.get(&block.hash()) {
+                                            blocks.extend_from_slice(&orphans);
+                                            orphan_buffer.remove(&block.hash());
+                                        }
                                         
                                     }
                                     // parent not in blockchain
                                     Err(_) => {
                                         // Add into a waiting queue
-                                        // if let Some(orphans) = orphan_buffer.get_mut(&block.get_parent()) {
-                                        //     orphans.push(block.clone());
-                                        // } else {
-                                        //     // Get the orphan and add it to the buffer
-                                        //     let orphans = vec![block.clone()];
-                                        //     orphan_buffer.insert(block.get_parent(), orphans);
-                                        // }
+                                        if let Some(orphans) = orphan_buffer.get_mut(&block.get_parent()) {
+                                            orphans.push(block.clone());
+                                        } else {
+                                            // Get the orphan and add it to the buffer
+                                            let orphans = vec![block.clone()];
+                                            orphan_buffer.insert(block.get_parent(), orphans);
+                                        }
                                         // Use the getblocks to get the necessary blocks
-                                        // peer.write(Message::GetBlocks(vec![block.hash()]));
+                                        peer.write(Message::GetBlocks(vec![block.hash()]));
                                     }      
                                 }
                             }

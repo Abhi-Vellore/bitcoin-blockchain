@@ -32,7 +32,7 @@ impl Blockchain {
         let merkle_tree = MerkleTree::new(&transactions);
         let merkle_root = merkle_tree.root();
         
-        let difficulty: H256 = [255u8; 32].into();
+        let difficulty: H256 = hex!("0001000000000000000000000000000000000000000000000000000000000000").into();
         let timestamp: u128 = 0;
 
         let content = Content{ transactions };
