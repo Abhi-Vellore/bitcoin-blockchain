@@ -64,10 +64,13 @@ impl Worker {
             let (msg, mut peer) = msg;
             let msg: Message = bincode::deserialize(&msg).unwrap();
             match msg {
+                // PING
                 Message::Ping(nonce) => {
                     debug!("Ping: {}", nonce);
                     peer.write(Message::Pong(nonce.to_string()));
                 }
+
+                // PONG
                 Message::Pong(nonce) => {
                     debug!("Pong: {}", nonce);
                 }
@@ -90,6 +93,7 @@ impl Worker {
                     }
 
                     drop(blockchain);
+
                     // Asking for hashes for the unknown
                     if !unknown.is_empty() {
                         peer.write(Message::GetBlocks(unknown));
@@ -118,6 +122,7 @@ impl Worker {
                     }
                 }
 
+                // BLOCKS
                 Message::Blocks(blocks) => {
                     let mut blockchain = self.blockchain.lock().unwrap();
                     
@@ -149,15 +154,19 @@ impl Worker {
                                             blocks.extend_from_slice(&orphans);
                                             orphan_buffer.remove(&block.hash());
                                         }
-                                        
                                     }
-                                    // parent not in blockchain
+
+                                    // parent of the block is not in blockchain
                                     Err(_) => {
-                                        // Add into a waiting queue
+                                        // add block into a waiting queue (orphan buffer)
                                         if let Some(orphans) = orphan_buffer.get_mut(&block.get_parent()) {
+                                            // buffer already contains an array of orphans corresponding 
+                                            // to this block's parent
                                             orphans.push(block.clone());
-                                        } else {
-                                            // Get the orphan and add it to the buffer
+                                        } 
+                                        else {
+                                            // buffer does not contain an array of orphans corresponding 
+                                            // to this block's parent, so create a new array of orphans
                                             let orphans = vec![block.clone()];
                                             orphan_buffer.insert(block.get_parent(), orphans);
                                         }
@@ -167,14 +176,12 @@ impl Worker {
                                 }
                             }
                         }
-                        // Next block
-                        i += 1;
+                        i += 1;     // Next block
                     }
 
                     if new_block_hashes.len() != 0 {
                         self.server.broadcast(Message::NewBlockHashes(new_block_hashes));
                     }
-
                 }  
                 _ => {
                     // Logic for all other unhandled variants or...
