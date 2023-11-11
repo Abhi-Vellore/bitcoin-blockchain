@@ -1,17 +1,20 @@
 use crossbeam::channel::{unbounded, Receiver, Sender, TryRecvError};
 use log::{debug, info};
-use crate::{
-    types::block::Block,
-    blockchain::Blockchain,
-    network::server::Handle as ServerHandle
-};
 use std::{
     sync::{Arc, Mutex},
     thread,
 };
-use crate::network::message::Message;
-use crate::types::hash::Hashable;
-
+use crate::{
+    blockchain::Blockchain,
+    network::server::Handle as ServerHandle,
+    network::message::Message,
+    types::{
+        hash::Hashable,
+        block::Block,
+        transaction::SignedTransaction,
+        mempool::Mempool,
+    },
+};
 
 #[derive(Clone)]
 pub struct Worker {
@@ -45,10 +48,10 @@ impl Worker {
 
     fn worker_loop(&self) {
         loop {
-            // Receive from channel
+            // Receive block from channel
             let block = self.finished_block_chan.recv().expect("Receive finished block error");
             
-            // TODO for student: insert this finished block to blockchain, and broadcast this block hash
+            // Insert this block into blockchain
             let mut blockchain = self.blockchain.lock().unwrap();
             let result = blockchain.insert(&block);
             drop(blockchain);
@@ -58,12 +61,10 @@ impl Worker {
                 Err(e) => panic!("{}", e)
             }
 
-            // Broadcast message to NewBlockHashes
+            // Broadcast block hash as a NewBlockHashes message
             let hash = vec![block.hash()];
             self.server.broadcast(Message::NewBlockHashes(hash));
             println!("Broadcast the new block everywhere");
-
-
         }
     }
 }

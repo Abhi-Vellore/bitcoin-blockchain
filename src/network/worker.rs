@@ -1,13 +1,17 @@
 use super::message::Message;
 use super::peer;
 use super::server::Handle as ServerHandle;
-use crate::types::hash::{H256, Hashable};
+use crate::types::{
+    hash::{H256, Hashable},
+    mempool::Mempool,
+    transaction,
+    block::{Block},
+};
 use crate::blockchain::Blockchain;
 use std::{
     sync::{Arc, Mutex},
     thread,
 };
-use crate::types::block::{Block};
 use std::collections::HashMap;
 use log::{debug, warn, error};
 
@@ -22,6 +26,7 @@ pub struct Worker {
     num_worker: usize,
     server: ServerHandle,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>
 }
 
 
@@ -31,13 +36,15 @@ impl Worker {
         num_worker: usize,
         msg_src: smol::channel::Receiver<(Vec<u8>, peer::Handle)>,
         server: &ServerHandle,
-        blockchain: &Arc<Mutex<Blockchain>>
+        blockchain: &Arc<Mutex<Blockchain>>,
+        mempool: &Arc<Mutex<Mempool>>
     ) -> Self {
         Self {
             msg_chan: msg_src,
             num_worker,
             server: server.clone(),
             blockchain: Arc::clone(blockchain),
+            mempool: Arc::clone(mempool)
         }
     }
 
@@ -145,9 +152,16 @@ impl Worker {
                                 let result2 = blockchain.insert(block);
                                 match result2 {
                                     Ok(_) => {
-                                        // successfully inserted into blockchain
+                                        // Successfully inserted into blockchain!
                                         // Need to add block hash
                                         new_block_hashes.push(block.hash());
+                                        
+                                        // Remove the block's transaction from mempool
+                                        let mut mempool = self.mempool.lock().unwrap();
+                                        for txn in block.content.transactions.iter() {
+                                            mempool.map.remove(&txn.hash());
+                                        }
+                                        drop(mempool);
                                         
                                         // claim orphans if possible
                                         if let Some(orphans) = orphan_buffer.get(&block.hash()) {
@@ -182,12 +196,62 @@ impl Worker {
                     if new_block_hashes.len() != 0 {
                         self.server.broadcast(Message::NewBlockHashes(new_block_hashes));
                     }
-                }  
-                _ => {
-                    // Logic for all other unhandled variants or...
-                    unimplemented!() // Or `todo!()` if you want to add logic later.
+                } 
+                
+                // NEW TRANSACTION HASHES
+                Message::NewTransactionHashes(hashes) => {
+                    let mempool = self.mempool.lock().unwrap();
+                    let mut unknown = Vec::new();
+                    for hash in hashes.iter() {
+                        if !mempool.map.contains_key(hash) {
+                            // hash not in mempool, so add it to vec of unknowns
+                            unknown.push(hash.clone());   
+                        }
+                    }
+                    drop(mempool);
+                    
+                    if !unknown.is_empty() {
+                        peer.write(Message::GetTransactions(unknown));
+                    }
+                }
+                
+                // GET TRANSACTIONS
+                Message::GetTransactions(hashes) => {
+                    let mempool = self.mempool.lock().unwrap();
+                    let mut transactions = Vec::new();
+                    for hash in hashes.iter() {
+                        if mempool.map.contains_key(hash) {
+                            let txn = mempool.map.get(hash).unwrap();
+                            transactions.push(txn.clone());
+                        }
+                    }
+                    drop(mempool);
+                    
+                    if !transactions.is_empty() {
+                        peer.write(Message::Transactions(transactions));
+                    }
                 }
 
+                // TRANSACTIONS
+                Message::Transactions(transactions) => {
+                    let mut mempool = self.mempool.lock().unwrap();
+                    let mut new_hashes = Vec::new();
+                    for txn in transactions.iter() {
+                        if !mempool.map.contains_key(&txn.hash()) {
+                            // check current transaction
+                            if transaction::verify(&txn.transaction, &txn.public_key, &txn.signature) {
+                                // passed check; insert transaction into mempool
+                                mempool.map.insert(txn.hash(), txn.clone());
+                                new_hashes.push(txn.hash());
+                            }                            
+                        }
+                    }
+                    drop(mempool);
+
+                    if !new_hashes.is_empty() {
+                        self.server.broadcast(Message::NewTransactionHashes(new_hashes));
+                    }
+                }
             }
         }
     }

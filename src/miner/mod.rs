@@ -12,9 +12,10 @@ use std::{
 use crate::blockchain::Blockchain;
 use crate::types::{
     block::{Block, Content, Header},
-    hash::Hashable,
+    hash::{Hashable, H256},
     transaction::SignedTransaction,
     merkle::MerkleTree,
+    mempool::Mempool
 };
 
 enum ControlSignal {
@@ -35,6 +36,7 @@ pub struct Context {
     operating_state: OperatingState,
     finished_block_chan: Sender<Block>,
     blockchain: Arc<Mutex<Blockchain>>,
+    mempool: Arc<Mutex<Mempool>>,
 }
 
 #[derive(Clone)]
@@ -43,7 +45,10 @@ pub struct Handle {
     control_chan: Sender<ControlSignal>,
 }
 
-pub fn new(blockchain: &Arc<Mutex<Blockchain>>) -> (Context, Handle, Receiver<Block>) {
+// set upper limit on number of transactions per block
+const BLOCK_SIZE_LIMIT: usize = 30;      
+
+pub fn new(blockchain: &Arc<Mutex<Blockchain>>, mempool: &Arc<Mutex<Mempool>>) -> (Context, Handle, Receiver<Block>) {
     let (signal_chan_sender, signal_chan_receiver) = unbounded();
     let (finished_block_sender, finished_block_receiver) = unbounded();
 
@@ -52,6 +57,7 @@ pub fn new(blockchain: &Arc<Mutex<Blockchain>>) -> (Context, Handle, Receiver<Bl
         operating_state: OperatingState::Paused,
         finished_block_chan: finished_block_sender,
         blockchain: Arc::clone(blockchain),
+        mempool: Arc::clone(mempool)
     };
 
     let handle = Handle {
@@ -64,7 +70,8 @@ pub fn new(blockchain: &Arc<Mutex<Blockchain>>) -> (Context, Handle, Receiver<Bl
 #[cfg(any(test,test_utilities))]
 fn test_new() -> (Context, Handle, Receiver<Block>) {
     let blockchain = Arc::new(Mutex::new(Blockchain::new()));
-    new(&blockchain)
+    let mempool = Arc::new(Mutex::new(Mempool::new()));
+    new(&blockchain, &mempool)
 }
 
 impl Handle {
@@ -148,21 +155,44 @@ impl Context {
             // self.finished_block_chan.send(block.clone()).expect("Send finished block error");
 
             println!("Starting the Mining Process...");
-
+            
+            // Get current tip of blockchain to determine parent_block and difficulty 
             let blockchain = self.blockchain.lock().unwrap();
-
             let parent_hash = blockchain.tip();
             let parent_block = match blockchain.get_block(&parent_hash) {
                 Ok(block) => block,    // parent exists in blockchain
                 Err(_) => panic!("Parent node does not exist in blockchain."),   // parent not found
             };
-
             let difficulty = parent_block.get_difficulty();
             let mut rng = rand::thread_rng();
-
             drop(blockchain);
 
-            let transactions: Vec<SignedTransaction> = Vec::new();  // empty transactions vector (for now)
+            // Get transactions
+            let mut transactions: Vec<SignedTransaction> = Vec::new();
+            let mut mempool = self.mempool.lock().unwrap();
+            let transactions: Vec<SignedTransaction> = mempool.map.values()
+                .take(BLOCK_SIZE_LIMIT)
+                .cloned()
+                .collect();
+            
+            // Stop mining of current block if there are no transactions
+            if transactions.len() == 0 {
+                continue;
+            }
+
+            // Collect the hashes of the transactions to be removed
+            let removal_hashes: Vec<H256> = transactions.iter()
+                .map(|txn| txn.hash())
+                .collect();
+
+            // Remove the transactions from the mempool
+            for hash in removal_hashes {
+                mempool.map.remove(&hash);
+            }
+
+            drop(mempool);
+
+            // Get other attributes for current block
             let merkle_tree = MerkleTree::new(&transactions.clone());
             let merkle_root = merkle_tree.root();
             

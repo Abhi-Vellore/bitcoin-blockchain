@@ -8,23 +8,25 @@ use super::address::Address;
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Transaction {
-    sender : Address,
-    receiver : Address,
-    value: i32
+    pub account_nonce: u128,
+    pub receiver: Address,
+    pub value: u128
 }
 
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct SignedTransaction {
-    transaction: Transaction,
-    signature: Vec<u8>, 
-    public_key: Vec<u8> 
+    pub transaction: Transaction,
+    pub signature: Vec<u8>, 
+    pub public_key: Vec<u8> 
 }
 
 // Implement the hash function for SignedTransaction 
 impl Hashable for SignedTransaction {
     fn hash(&self) -> H256 {
         // Serialize the transaction into bytes
-        let serialized_transaction: Vec<u8> = bincode::serialize(&self).unwrap();
+        let serialized_transaction: Vec<u8> = bincode::serialize(self).unwrap();
+
+        // Hash the transaction
         ring::digest::digest(&ring::digest::SHA256, &serialized_transaction).into()
     }
 }
@@ -32,7 +34,7 @@ impl Hashable for SignedTransaction {
 /// Create digital signature of a transaction
 pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
     // Serialize the transaction
-    let transaction_bytes: Vec<u8> = bincode::serialize(&t).unwrap();
+    let transaction_bytes: Vec<u8> = bincode::serialize(t).unwrap();
 
     // Sign the serialized transaction with the private key
     let signature = key.sign(&transaction_bytes);
@@ -44,21 +46,20 @@ pub fn sign(t: &Transaction, key: &Ed25519KeyPair) -> Signature {
 pub fn verify(t: &Transaction, public_key: &[u8], signature: &[u8]) -> bool {
     
     // Convert the transaction to a byte representation
-    let transaction_bytes = bincode::serialize(&t).unwrap();
+    let transaction_bytes = bincode::serialize(t).unwrap();
 
     // Create a PublicKey from the public key bytes
     let public_key = signature::UnparsedPublicKey::new(&signature::ED25519, public_key);
 
     // Verify the signature using the public key
-    match public_key.verify(&transaction_bytes, &signature) {
-        Ok(_) => true,  // Signature is valid
+    match public_key.verify(&transaction_bytes, signature) {
+        Ok(_) => true,   // Signature is valid
         Err(_) => false, // Signature is invalid
     }    
 }
 
 #[cfg(any(test, test_utilities))]
-pub fn generate_random_transaction() -> Transaction {
-    
+pub fn generate_random_transaction() -> Transaction { 
     // Create a random number generator
     fn generate_random_bytes() -> [u8; 20] {
         let mut rng = rand::thread_rng();
@@ -70,13 +71,13 @@ pub fn generate_random_transaction() -> Transaction {
     let mut rng = rand::thread_rng();
 
     // Generate random values for sender, receiver, and value
-    let sender = Address::from_public_key_bytes(&generate_random_bytes());       
+    let account_nonce = rng.gen::<u128>();       
     let receiver = Address::from_public_key_bytes(&generate_random_bytes());     
-    let value = rng.gen::<i32>();   
+    let value = rng.gen::<u128>();    
 
     // Create a new Transaction with the generated values
     Transaction {
-        sender,
+        account_nonce,
         receiver,
         value,
     }
