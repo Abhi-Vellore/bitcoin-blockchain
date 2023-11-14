@@ -141,33 +141,56 @@ impl Context {
                 return;
             }
 
-            // Actual transaction generation process
-
+            // Begin actual transaction generation process
             println!("Starting the Transaction Generation Process...");
+
+            // Get current tip of blockchain to find parent_state 
+            let blockchain = self.blockchain.lock().unwrap();
+            let parent_hash = blockchain.tip();
+            let parent_state = match blockchain.get_state(&parent_hash) {
+                Ok(state) => state,
+                Err(_) => panic!("Parent node does not exist in blockchain.")
+            };
+            drop(blockchain);
 
             let mut rng = rand::thread_rng();
 
-            // generate a random account_nonce
-            let account_nonce: u128 = rng.gen::<u128>();
+            // Choose a random sender
+            let sender_seed = rng.gen_range(0..3);     // random seed from {1,2,3}
+            let sender_key = Ed25519KeyPair::from_seed_unchecked(&[sender_seed;32]).unwrap();
+            let sender_public_key = sender_key.public_key().as_ref().to_vec();
+            let sender_address = Address::from_public_key_bytes(&sender_public_key);
+
+            let sender_info = parent_state.map.get(&sender_address);
+            let sender_nonce = sender_info.0;
+            let sender_balance = sender_info.1;
+
+            // Skip if the chosen sender has no balance
+            if sender_balance == 0 {
+                continue;
+            }
             
-            // choose a random receiver
-            let receiver_seed = rng.gen_range(0..3);     // random seed
+            // Choose a random receiver
+            let receiver_seed = rng.gen_range(0..3);     // random seed from {1,2,3}
             let receiver_key = Ed25519KeyPair::from_seed_unchecked(&[receiver_seed;32]).unwrap();
             let receiver_public_key = receiver_key.public_key().as_ref().to_vec();
-            let receiver = Address::from_public_key_bytes(&receiver_public_key);
-            
-            // generate a random value for the transaction
-            let value: u128 = rng.gen::<u128>();
+            let receiver_address = Address::from_public_key_bytes(&receiver_public_key);
 
-            // form the transaction
-            let transaction = Transaction{account_nonce, receiver, value};
+            // Choose a random value for the transaction
+            // value must be between [1, balance/2]
+            let max_value = sender_balance / 2;
+            if max_value <= 1 {
+                continue;
+            }
+            let value = rng.gen_range(1..max_value);
 
-            // generate public_key and signature for SignedTransaction
-            let sender_key = key_pair::random();        // random key for sender
-            let sender_public_key = sender_key.public_key().as_ref().to_vec();
+            // Form the transaction
+            let transaction = Transaction{sender_nonce, receiver, value};
+
+            // Sign the transaction
             let signature = transaction::sign(&transaction, &sender_key).as_ref().to_vec();
 
-            // form the signed transaction
+            // Form the signed transaction
             let signed_transaction = SignedTransaction {
                 transaction: transaction, 
                 signature: signature, 

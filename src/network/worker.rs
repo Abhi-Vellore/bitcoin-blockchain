@@ -30,7 +30,6 @@ pub struct Worker {
 }
 
 
-
 impl Worker {
     pub fn new(
         num_worker: usize,
@@ -136,64 +135,57 @@ impl Worker {
                     let mut new_block_hashes = Vec::new();
                     let mut blocks = blocks.clone();
 
-                    let mut i = 0;
-                    while i < blocks.len() {
-                        let block = &blocks[i].clone();
+                    for block in blocks.iter() {
+                        let block = block.clone();                    
 
-                        if !(block.hash() <= block.get_difficulty()) {
+                        // Skip if block hash exceeds difficulty
+                        if block.hash() > block.get_difficulty() {
                             continue;
                         }
 
-                        let result = blockchain.get_block(&block.hash());
-                        match result {
-                            Ok(_) => {()}
-                            Err(_) => {
-                                // Add the new block
-                                let result2 = blockchain.insert(block);
-                                match result2 {
-                                    Ok(_) => {
-                                        // Successfully inserted into blockchain!
-                                        // Need to add block hash
-                                        new_block_hashes.push(block.hash());
-                                        
-                                        // Remove the block's transaction from mempool
-                                        let mut mempool = self.mempool.lock().unwrap();
-                                        for txn in block.content.transactions.iter() {
-                                            mempool.map.remove(&txn.hash());
-                                        }
-                                        drop(mempool);
-                                        
-                                        // claim orphans if possible
-                                        if let Some(orphans) = orphan_buffer.get(&block.hash()) {
-                                            blocks.extend_from_slice(&orphans);
-                                            orphan_buffer.remove(&block.hash());
-                                        }
-                                    }
+                        // Skip if this block is already in blockchain
+                        if blockchain.get_block(&block.hash()).is_ok() {
+                            continue;
+                        }
 
-                                    // parent of the block is not in blockchain
-                                    Err(_) => {
-                                        // add block into a waiting queue (orphan buffer)
-                                        if let Some(orphans) = orphan_buffer.get_mut(&block.get_parent()) {
-                                            // buffer already contains an array of orphans corresponding 
-                                            // to this block's parent
-                                            orphans.push(block.clone());
-                                        } 
-                                        else {
-                                            // buffer does not contain an array of orphans corresponding 
-                                            // to this block's parent, so create a new array of orphans
-                                            let orphans = vec![block.clone()];
-                                            orphan_buffer.insert(block.get_parent(), orphans);
-                                        }
-                                        // Use the getblocks to get the necessary blocks
-                                        peer.write(Message::GetBlocks(vec![block.hash()]));
-                                    }      
+                        // Attempt to insert this block into the blockchain
+                        match blockchain.insert(block) {
+                            // Block was successfully inserted into blockchain
+                            Ok(_) => {
+                                new_block_hashes.push(block.hash());
+                                
+                                // Remove the block's transactions from mempool
+                                let mut mempool = self.mempool.lock().unwrap();
+                                for txn in block.content.transactions.iter() {
+                                    mempool.map.remove(&txn.hash());
+                                }
+                                drop(mempool);
+                                
+                                // Check if there are orphans whose parent is this block
+                                if let Some(orphans) = orphan_buffer.get(&block.hash()) {
+                                    // This block is the parent to some orphans, so take them out 
+                                    // of orphan_buffer and put them in line to be added to blockchain
+                                    blocks.extend_from_slice(&orphans);
+                                    orphan_buffer.remove(&block.hash());
                                 }
                             }
+
+                            // Parent of the block is not in blockchain
+                            Err(true) => {
+                                // Add block into the array of orphans corresponding to its parent
+                                orphan_buffer.entry(block.get_parent())
+                                             .or_insert_with(Vec::new).push(block.clone());
+
+                                // Request missing blocks
+                                peer.write(Message::GetBlocks(vec![block.hash()]));
+                            }
+                            
+                            // Block did not pass transaction checks
+                            Err(false) => {}
                         }
-                        i += 1;     // Next block
                     }
 
-                    if new_block_hashes.len() != 0 {
+                    if !new_block_hashes.is_empty() {
                         self.server.broadcast(Message::NewBlockHashes(new_block_hashes));
                     }
                 } 

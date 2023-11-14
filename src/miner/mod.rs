@@ -156,38 +156,57 @@ impl Context {
 
             println!("Starting the Mining Process...");
             
-            // Get current tip of blockchain to determine parent_block and difficulty 
+            // Get current tip of blockchain to get parent_block, parent_state, difficulty 
             let blockchain = self.blockchain.lock().unwrap();
             let parent_hash = blockchain.tip();
             let parent_block = match blockchain.get_block(&parent_hash) {
                 Ok(block) => block,    // parent exists in blockchain
                 Err(_) => panic!("Parent node does not exist in blockchain."),   // parent not found
             };
+            let parent_state = match blockchain.get_state(&parent_hash) {
+                Ok(state) => state,    // parent exists in blockchain
+                Err(_) => panic!("Parent node does not exist in blockchain."),   // parent not found
+            };
             let difficulty = parent_block.get_difficulty();
             let mut rng = rand::thread_rng();
             drop(blockchain);
 
-            // Get transactions
-            let mut transactions: Vec<SignedTransaction> = Vec::new();
+            // Prepare to get transactions for the new block
             let mut mempool = self.mempool.lock().unwrap();
-            let transactions: Vec<SignedTransaction> = mempool.map.values()
-                .take(BLOCK_SIZE_LIMIT)
-                .cloned()
-                .collect();
-            
-            // Stop mining of current block if there are no transactions
-            if transactions.len() == 0 {
-                continue;
+            let mut transactions: Vec<SignedTransaction> = Vec::new();
+            let mut removal_hashes: = Vec::new();
+
+            // Iterate over the transactions in the mempool
+            for txn in mempool.map.values() {
+                // Break if the block transaction limit is reached
+                if transactions.len() == BLOCK_TXN_LIMIT {
+                    break;
+                }
+
+                let sender_address = Address::from_public_key_bytes(&txn.public_key);
+                let sender_info = parent_state.map.get(&sender_address);
+
+                // Check nonce, balance, and if sender is already included in the new block
+                let is_nonce_valid = txn.transaction.account_nonce == sender_info.0 + 1;
+                let is_balance_sufficient = txn.transaction.value <= sender_info.1;
+                let is_sender_unique = !transactions.iter().any(|x| Address::from_public_key_bytes(&x.public_key) == sender);
+
+                if is_nonce_valid && is_balance_sufficient && is_sender_unique {
+                    transactions.push(txn.clone());
+                }
+
+                // Schedule the processed transaction for removal from the mempool
+                removal_hashes.push(txn.hash());
             }
 
-            // Collect the hashes of the transactions to be removed
-            let removal_hashes: Vec<H256> = transactions.iter()
-                .map(|txn| txn.hash())
-                .collect();
-
-            // Remove the transactions from the mempool
-            for hash in removal_hashes {
-                mempool.map.remove(&hash);
+            // Remove the processed transactions from the mempool
+            for txn_hash in removal_hashes {
+                mempool.map.remove(&txn_hash);
+            }
+            
+            // Stop mining current block if there are no transactions
+            if transactions.len() == 0 {
+                continue;
             }
 
             drop(mempool);

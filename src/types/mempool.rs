@@ -12,7 +12,7 @@ pub struct Mempool {
 impl Mempool {
     pub fn new() -> Self {
         Self{
-            map: HashMap::new(),
+            map: HashMap::new()
         }
     }
 }

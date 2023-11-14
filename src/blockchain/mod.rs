@@ -3,6 +3,7 @@ use crate::types::{
     hash::{H256, Hashable},
     transaction::SignedTransaction,
     merkle::MerkleTree,
+    state::State
 };
 use std::collections::HashMap;
 use hex_literal::hex;
@@ -10,7 +11,8 @@ use hex_literal::hex;
 // A BlockNode is a node in the Blockchain
 pub struct BlockNode {
     block: Block, 
-    height: u64
+    height: u64,
+    pub state: State
 }
 
 // A Blockchain
@@ -32,11 +34,10 @@ impl Blockchain {
         let merkle_tree = MerkleTree::new(&transactions);
         let merkle_root = merkle_tree.root();
         
-     // let difficulty: H256 = hex!("0000090000000000000000000000000000000000000000000000000000000000").into();
         let difficulty: H256 = hex!("0000100000000000000000000000000000000000000000000000000000000000").into();
         let timestamp: u128 = 0;
 
-        let content = Content{ transactions };
+        let content = Content { transactions };
 
         let header = Header {
             parent: genesis_parent,
@@ -46,35 +47,99 @@ impl Blockchain {
             merkle_root: merkle_root
         };
 
-        let genesis_block = Block{ header, content };
+        let genesis_block = Block { header, content };
         let tip = genesis_block.hash();
         println!("GENISIS HASH: {}", tip);
 
-        map.insert(genesis_block.hash(), BlockNode{ block: genesis_block, height: 0 });
+        // Initialize the genesis block node's state with 3 accounts
+        let mut state = State::new();
+        for seed in 0..3 {
+            let key = Ed25519KeyPair::from_seed_unchecked(&[seed;32]).unwrap();
+            let public_key = key.public_key().as_ref().to_vec();
+            let addr = Address::from_public_key_bytes(&public_key);
+            
+            // Only first account has a nonzero balance
+            let balance = if i == 0 { 10000u128 } else { 0 };
+            state.insert(addr, (0, balance));      // account_nonce initialized to 0
+        }
 
-        Blockchain{ map, tip }
+        let genesis_block_node = BlockNode { 
+            block: genesis_block, 
+            height: 0, 
+            state: state 
+        }
+
+        map.insert(genesis_block.hash(), genesis_block_node);
+
+        Blockchain { map, tip }
     }
 
     /// Insert a block into blockchain
-    pub fn insert(&mut self, block: &Block) -> Result<(), &'static str> {
+    pub fn insert(&mut self, block: &Block) -> Result<(), bool> {
         let parent_node = match self.map.get(&block.get_parent()) {
             Some(node) => node,    // parent exists in hashmap
             None => {
                 // parent is missing in hashmap, so return an error
-                return Err("Parent node not found");
+                return Err(true);
             }
         };
 
-        // check if block is a duplicate
+        // Check if block is a duplicate
         if self.map.contains_key(&block.hash()) {
-            return Err("Block already exists");
+            return Err(false);   // block already exists
         }
 
         let height = parent_node.height + 1;
+        let parent_state = parent_node.state.clone();
+        
+        // Validate all transactions in the block
+        for txn in block.content.data.iter() {
+            // Check transaction validity
+            if !transaction::verify(&txn.transaction, &txn.public_key, &txn.signature) {
+                return Err(false);       // transaction verification failed
+            }
 
+            // Check account state
+            let sender_address = Address::from_public_key_bytes(&txn.public_key);
+            let sender_info = match parent_state.map.get(&sender_address) {
+                Some(acc_info) => acc_info,
+                None => {
+                    return Err(false);   // sender's address not in state hashmap
+                },
+            };
+            let sender_nonce = sender_info.0;
+            let sender_balance = sender_info.1;
+
+            // Check if the new account nonce in the transaction is correct
+            if sender_nonce + 1 != txn.transaction.account_nonce {
+                return Err(false);      // transaction has invalid account nonce
+            }
+            
+            // Check if sender's balance is enough
+            if sender_balance < txn.transaction.value {
+                return Err(false);      // balance is not enough
+            }
+        }
+
+        // All the transactions are valid, so create a new state for them
+        let mut new_state = parent_state.clone()
+        for txn in block.content.data.iter() {
+            let sender_address = Address::from_public_key_bytes(&txn.public_key);
+            let receiver_address = txn.transaction.receiver;
+            let value = txn.transaction.value;
+            
+            let sender_info = parent_state.map.get(&sender_address)
+            let receiver_info = parent_state.map.get(&receiver_address)
+            
+            // Value is subracted from sender's balance, added to receiver's balance 
+            new_state.insert(sender_address, (sender_info.0+1, sender_info.1 - value));
+            new_state.insert(receiver_address, (receiver_info.0, receiver_info.1 + value));
+        }
+        
         let blocknode = BlockNode { 
             block: block.clone(), 
-            height: height 
+            height: height,
+            state: new_state.clone()
         }; 
 
         // Insert blocknode into hashmap
@@ -86,7 +151,7 @@ impl Blockchain {
             self.tip = block.hash();
         }
 
-        Ok(())
+        Ok(())    // Successfully inserted block
     }
 
     /// Get the last block's hash of the longest chain
@@ -106,14 +171,26 @@ impl Blockchain {
         }
     }
 
+    /// Get a desired block's state
+    pub fn get_state(&self, blockhash: &H256) -> Result<&State, &'static str> {
+        match self.map.get(blockhash){
+            Some(node) => {
+                return Ok(&node.state);     // block exists in hashmap
+            }
+            None => {
+                return Err("Block does not exist in blockchain.");   // block not found
+            }
+        }
+    }
+
     /// Get all blocks' hashes of the longest chain, ordered from genesis to the tip
     pub fn all_blocks_in_longest_chain(&self) -> Vec<H256> {
         let mut longest_chain: Vec<H256> = Vec::new();
         
-        // start with the tip 
+        // Start with the tip 
         let mut cur_block_hash: H256 = self.tip; 
 
-        // move upwards through chain until genesis block is reached
+        // Move upwards through chain until genesis block is reached
         loop {
             longest_chain.push(cur_block_hash); 
             let cur_blocknode = self.map.get(&cur_block_hash).unwrap();
