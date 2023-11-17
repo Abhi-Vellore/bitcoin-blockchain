@@ -1,12 +1,15 @@
 use crate::types::{
+    address::Address,
     block::{Block, Content, Header},
     hash::{H256, Hashable},
+    transaction,
     transaction::SignedTransaction,
     merkle::MerkleTree,
     state::State
 };
 use std::collections::HashMap;
 use hex_literal::hex;
+use ring::signature::{Ed25519KeyPair, KeyPair};
 
 // A BlockNode is a node in the Blockchain
 pub struct BlockNode {
@@ -59,17 +62,11 @@ impl Blockchain {
             let addr = Address::from_public_key_bytes(&public_key);
             
             // Only first account has a nonzero balance
-            let balance = if i == 0 { 10000u128 } else { 0 };
-            state.insert(addr, (0, balance));      // account_nonce initialized to 0
+            let balance = if seed == 0 { 10000u128 } else { 0 };
+            state.map.insert(addr, (0, balance));    // account_nonce initialized to 0
         }
 
-        let genesis_block_node = BlockNode { 
-            block: genesis_block, 
-            height: 0, 
-            state: state 
-        }
-
-        map.insert(genesis_block.hash(), genesis_block_node);
+        map.insert(genesis_block.hash(), BlockNode { block: genesis_block, height: 0, state: state });
 
         Blockchain { map, tip }
     }
@@ -93,7 +90,7 @@ impl Blockchain {
         let parent_state = parent_node.state.clone();
         
         // Validate all transactions in the block
-        for txn in block.content.data.iter() {
+        for txn in block.content.transactions.iter() {
             // Check transaction validity
             if !transaction::verify(&txn.transaction, &txn.public_key, &txn.signature) {
                 return Err(false);       // transaction verification failed
@@ -122,18 +119,23 @@ impl Blockchain {
         }
 
         // All the transactions are valid, so create a new state for them
-        let mut new_state = parent_state.clone()
-        for txn in block.content.data.iter() {
+        let mut new_state = parent_state.clone();
+        for txn in block.content.transactions.iter() {
             let sender_address = Address::from_public_key_bytes(&txn.public_key);
             let receiver_address = txn.transaction.receiver;
             let value = txn.transaction.value;
-            
-            let sender_info = parent_state.map.get(&sender_address)
-            let receiver_info = parent_state.map.get(&receiver_address)
-            
-            // Value is subracted from sender's balance, added to receiver's balance 
-            new_state.insert(sender_address, (sender_info.0+1, sender_info.1 - value));
-            new_state.insert(receiver_address, (receiver_info.0, receiver_info.1 + value));
+
+            if let Some(sender_info) = parent_state.map.get(&sender_address) {
+                // Txn value is subracted from sender's balance
+                let new_sender_balance = sender_info.1 - value;
+                new_state.map.insert(sender_address, (sender_info.0 + 1, new_sender_balance));
+            }
+        
+            if let Some(receiver_info) = parent_state.map.get(&receiver_address) {
+                // Txn value is added to receiver's balance
+                let new_receiver_balance = receiver_info.1 + value;
+                new_state.map.insert(receiver_address, (receiver_info.0, new_receiver_balance));
+            }
         }
         
         let blocknode = BlockNode { 

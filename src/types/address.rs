@@ -60,7 +60,10 @@ impl Address {
         address_bytes.copy_from_slice(last_20_bytes);
 
         Address(address_bytes)
+    }
 
+    pub fn to_hex_string(&self) -> String {
+        self.0.iter().map(|byte| format!("{:02x}", byte)).collect()
     }
 }
 // DO NOT CHANGE THIS COMMENT, IT IS FOR AUTOGRADER. BEFORE TEST

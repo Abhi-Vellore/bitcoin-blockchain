@@ -135,8 +135,9 @@ impl Worker {
                     let mut new_block_hashes = Vec::new();
                     let mut blocks = blocks.clone();
 
-                    for block in blocks.iter() {
-                        let block = block.clone();                    
+                    let mut i = 0;
+                    while i < blocks.len() {
+                        let block = &blocks[i].clone();                 
 
                         // Skip if block hash exceeds difficulty
                         if block.hash() > block.get_difficulty() {
@@ -149,7 +150,7 @@ impl Worker {
                         }
 
                         // Attempt to insert this block into the blockchain
-                        match blockchain.insert(block) {
+                        match blockchain.insert(&block) {
                             // Block was successfully inserted into blockchain
                             Ok(_) => {
                                 new_block_hashes.push(block.hash());
@@ -183,6 +184,8 @@ impl Worker {
                             // Block did not pass transaction checks
                             Err(false) => {}
                         }
+
+                        i += 1;    // next block
                     }
 
                     if !new_block_hashes.is_empty() {

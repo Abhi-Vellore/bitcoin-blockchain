@@ -11,6 +11,7 @@ use std::{
 };
 use crate::blockchain::Blockchain;
 use crate::types::{
+    address::Address,
     block::{Block, Content, Header},
     hash::{Hashable, H256},
     transaction::SignedTransaction,
@@ -154,7 +155,7 @@ impl Context {
             // TODO for student: if block mining finished, you can have something like: 
             // self.finished_block_chan.send(block.clone()).expect("Send finished block error");
 
-            println!("Starting the Mining Process...");
+            // println!("Starting the Mining Process...");
             
             // Get current tip of blockchain to get parent_block, parent_state, difficulty 
             let blockchain = self.blockchain.lock().unwrap();
@@ -164,7 +165,7 @@ impl Context {
                 Err(_) => panic!("Parent node does not exist in blockchain."),   // parent not found
             };
             let parent_state = match blockchain.get_state(&parent_hash) {
-                Ok(state) => state,    // parent exists in blockchain
+                Ok(state) => state.clone(),    // parent exists in blockchain
                 Err(_) => panic!("Parent node does not exist in blockchain."),   // parent not found
             };
             let difficulty = parent_block.get_difficulty();
@@ -174,25 +175,28 @@ impl Context {
             // Prepare to get transactions for the new block
             let mut mempool = self.mempool.lock().unwrap();
             let mut transactions: Vec<SignedTransaction> = Vec::new();
-            let mut removal_hashes: = Vec::new();
+            let mut removal_hashes = Vec::new();
 
             // Iterate over the transactions in the mempool
             for txn in mempool.map.values() {
                 // Break if the block transaction limit is reached
-                if transactions.len() == BLOCK_TXN_LIMIT {
+                if transactions.len() == BLOCK_SIZE_LIMIT {
                     break;
                 }
 
                 let sender_address = Address::from_public_key_bytes(&txn.public_key);
-                let sender_info = parent_state.map.get(&sender_address);
+                let sender_info = parent_state.map[&sender_address];
 
                 // Check nonce, balance, and if sender is already included in the new block
                 let is_nonce_valid = txn.transaction.account_nonce == sender_info.0 + 1;
                 let is_balance_sufficient = txn.transaction.value <= sender_info.1;
-                let is_sender_unique = !transactions.iter().any(|x| Address::from_public_key_bytes(&x.public_key) == sender);
-
+                let is_sender_unique = !transactions.iter().any(|x| Address::from_public_key_bytes(&x.public_key) == sender_address);
+                
                 if is_nonce_valid && is_balance_sufficient && is_sender_unique {
                     transactions.push(txn.clone());
+                }
+                else {
+                    println!("Miner found invalid transaction");
                 }
 
                 // Schedule the processed transaction for removal from the mempool

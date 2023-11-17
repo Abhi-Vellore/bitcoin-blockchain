@@ -148,7 +148,7 @@ impl Context {
             let blockchain = self.blockchain.lock().unwrap();
             let parent_hash = blockchain.tip();
             let parent_state = match blockchain.get_state(&parent_hash) {
-                Ok(state) => state,
+                Ok(state) => state.clone(),
                 Err(_) => panic!("Parent node does not exist in blockchain.")
             };
             drop(blockchain);
@@ -161,7 +161,8 @@ impl Context {
             let sender_public_key = sender_key.public_key().as_ref().to_vec();
             let sender_address = Address::from_public_key_bytes(&sender_public_key);
 
-            let sender_info = parent_state.map.get(&sender_address);
+            // Get the chosen sender's info from parent state
+            let sender_info = parent_state.map[&sender_address];
             let sender_nonce = sender_info.0;
             let sender_balance = sender_info.1;
 
@@ -171,7 +172,10 @@ impl Context {
             }
             
             // Choose a random receiver
-            let receiver_seed = rng.gen_range(0..3);     // random seed from {1,2,3}
+            let mut receiver_seed = rng.gen_range(0..3);     // random seed from {1,2,3}
+            while receiver_seed == sender_seed {        
+                receiver_seed = rng.gen_range(0..3);     // ensure receiver is different from sender
+            }
             let receiver_key = Ed25519KeyPair::from_seed_unchecked(&[receiver_seed;32]).unwrap();
             let receiver_public_key = receiver_key.public_key().as_ref().to_vec();
             let receiver_address = Address::from_public_key_bytes(&receiver_public_key);
@@ -185,7 +189,11 @@ impl Context {
             let value = rng.gen_range(1..max_value);
 
             // Form the transaction
-            let transaction = Transaction{sender_nonce, receiver, value};
+            let transaction = Transaction {
+                account_nonce: sender_nonce + 1,    // increment previous nonce
+                receiver: receiver_address, 
+                value: value
+            };
 
             // Sign the transaction
             let signature = transaction::sign(&transaction, &sender_key).as_ref().to_vec();

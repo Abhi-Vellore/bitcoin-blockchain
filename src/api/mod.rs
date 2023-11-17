@@ -180,6 +180,76 @@ impl Server {
                             
                             respond_json!(req, total_tx_count);
                         }
+                        "/blockchain/state" => {
+                            let params = url.query_pairs();
+                            let params: HashMap<_, _> = params.into_owned().collect();
+                            let block_num = match params.get("block") {
+                                Some(v) => v,
+                                None => {
+                                    respond_result!(req, false, "missing block number");
+                                    return;
+                                }
+                            };
+                            let block_num = match block_num.parse::<usize>() {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    respond_result!(
+                                        req,
+                                        false,
+                                        format!("error parsing block number: {}", e)
+                                    );
+                                    return;
+                                }
+                            };
+
+                            let blockchain = blockchain.lock().unwrap();
+                            let v = blockchain.all_blocks_in_longest_chain();
+                            
+                            // Handle block_num values that are out of bounds
+                            if block_num >= v.len() {
+                                respond_result!(req, false, "given block number is out of bounds");
+                                return;
+                            }
+
+                            // Get state
+                            let block_hash = v[block_num];
+                            let state = match blockchain.get_state(&block_hash) {
+                                Ok(s) => s.clone(),
+                                Err(_) => panic!("Block missing from blockchain.")
+                            };
+                            drop(blockchain);
+                            
+                            let mut acc_info = Vec::new();
+                            for (address, (acc_nonce, balance)) in &state.map {
+                                let address_str = address.clone().to_hex_string();
+                                let info_str = format!("({}, {}, {})", address_str, acc_nonce, balance);
+                                acc_info.push(info_str);
+                            }
+                            acc_info.sort();
+
+                            respond_json!(req, acc_info);
+                        }
+                        "/blockchain/num-blocks" => {
+                            let blockchain = blockchain.lock().unwrap();
+                            let length = blockchain.all_blocks_in_longest_chain().len();
+                            respond_json!(req, length);
+                        }
+                        "/mempool" => {
+                            let mempool = mempool.lock().unwrap();
+                            let map = mempool.map.clone();
+                            drop(mempool);
+
+                            let mut all_txns = Vec::new();
+                            for txn in map.values() {
+                                let acc_nonce = txn.transaction.account_nonce;
+                                let receiver = txn.transaction.receiver.clone().to_hex_string();
+                                let value = txn.transaction.value;
+                                let info = (acc_nonce, receiver, value);
+                                all_txns.push(info);
+                            }
+                            
+                            respond_json!(req, all_txns);
+                        }
                         _ => {
                             let content_type =
                                 "Content-Type: application/json".parse::<Header>().unwrap();
